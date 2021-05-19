@@ -30,6 +30,7 @@ from mpmath import polyroots
 from collections import OrderedDict
 import pickle
 from livestats import livestats
+from termcolor import colored
 
 
 R = 6373
@@ -53,6 +54,32 @@ def hex_to_rgb(value):
 
 nice_colors = ['#348ABD',  '#7A68A6',  '#A60628',  '#467821',  '#CF4457',  '#188487',  '#E24A33']
 nice_colors = [hex_to_rgb(v) for v in nice_colors]
+
+def build_col_print_func(colour, verbose=True, **add_kwargs):
+
+	def my_print(*args, **kwargs):
+		kwargs['flush']=False
+		args = [colored(arg, colour) for arg in args]
+		# Internal kwarg always has precedence, find add_kwargs otherwise
+		for k, v in add_kwargs.items():
+			if not k in kwargs:
+				kwargs[k] = v
+
+		#kwargs['flush']=True
+		if verbose:
+			print (*args, **kwargs)
+		
+	return my_print
+
+alert_print = build_col_print_func('red') # | grep '^[\[31m' --> Ctr-V ESC --> one or another '^[\[32m\|^[\[37m'
+# aoc_print = build_col_print_func('green', verbose=verbose) # | grep '^[\[32m'
+# nm_print = build_col_print_func('yellow', verbose=verbose) # | grep '^[\[33m'
+# flight_print = build_col_print_func('blue', verbose=verbose) # | grep '^[\[34m'
+# airport_print = build_col_print_func('magenta', verbose=verbose) # | grep '^[\[35m'
+# eaman_print = build_col_print_func('cyan', verbose=verbose) # | grep '^[\[36m'
+# dman_print = build_col_print_func('cyan', verbose=verbose) # | grep '^[\[37m'
+# """other possible colours: grey"""
+
 
 def percentile_custom(n):
 	def percentile_(x):
@@ -88,7 +115,7 @@ def inverted_edf(x):
 	else:
 		return None
 
-def haversine(lon1, lat1, lon2, lat2):
+def haversine_old(lon1, lat1, lon2, lat2):
 	"""
 	Calculate the great circle distance between two points 
 	on the earth (specified in decimal degrees)
@@ -112,6 +139,35 @@ def haversine(lon1, lat1, lon2, lat2):
 	c= 2 * atan2(sqrt(a), sqrt(1-a))
 	km = R * c
 	return km
+
+def haversine(lon1, lat1, lon2, lat2):
+	"""
+	Calculate the great circle distance between two points 
+	on the earth (specified in decimal degrees)
+	----------
+	Parameters
+	----------
+	lon1, lat1 : coordinates point 1 in degrees
+	lon2, lat2 : coordinates point 2 in degrees
+	-------
+	Return
+	------
+	Distance between points in km
+	"""
+	# convert decimal degrees to radians 
+	lon1, lat1, lon2, lat2 = map(radians, [lon1, lat1, lon2, lat2])
+	# haversine formula 
+	dlon = lon2 - lon1 
+	dlat = lat2 - lat1 
+	#a = sin(dlat/2)**2 + cos(lat1) * cos(lat2) * sin(dlon/2)**2
+	#c = 2 * asin(sqrt(a)) 
+	#c = 2 * atan2(sqrt(a), sqrt(1-a))
+	#km = 6373. * c
+	km = 2. * 6373. * arcsin(sqrt(sin(dlat/2.)**2 + cos(lat1) * cos(lat2) * sin(dlon/2.)**2)) 
+	return km
+
+def distance_euclidean(pt1, pt2):
+	return norm(array(pt2)-array(pt1))
 
 def intermetidate_point(lon1, lat1, lon2, lat2, fraction):
 	d = haversine(lon1, lat1, lon2, lat2)
@@ -252,6 +308,15 @@ def clock_time(message_before='',
 		message = ' '.join([message_after, str(elapsed)])
 		
 	print_function (message)
+
+@contextmanager
+def keep_time(obj, key=None):
+	# Used to attach to an object some computation time
+	start = dt.datetime.now()
+	yield
+	elapsed = dt.datetime.now() - start
+
+	obj.times[key] = obj.times.get(key, dt.timedelta(0.)) + elapsed
 
 def timeit(f, listt):
 	start=datetime.datetime.now()
@@ -1621,6 +1686,44 @@ def inv_s_scale_lognorm(mu_p, sig_p):
 	scale = exp(mu)
 
 	return s, scale
+
+def scale_and_s_from_quantile_sigma_lognorm(q, m, sig_p):
+	"""
+	assumes loc = 0.
+	"""
+
+	def build_f(sig_p, q, m):
+		def f(x):
+			return (exp(-x**2) + (sig_p/m)**2 * exp(2. * sqrt(2) * erfinv(2.*q - 1.) * x - 2. * x**2) -1.)**2
+		
+		return f
+		
+	f = build_f(sig_p, q, m)
+
+	results = minimize_scalar(f, method='bounded', bounds=(0, sig_p))
+	
+	if results['fun']>1e-6:
+		aprint ('results minimisation:', results)
+	
+	s = results['x']
+	scale =  m * exp(-sqrt(2.) * s * erfinv(2.*q - 1.))
+	
+	return scale, s
+
+def scale_and_s_from_mean_sigma_lognorm(mu, sig):
+	"""
+	mu and sig are the mean and sdt of the lognorm, not
+	the underlying norm.
+
+	assumes loc = 0.
+	"""
+	B = 1.+ (sig/mu)**2
+
+	scale = mu/sqrt(B)
+
+	s = sqrt(log(B))
+
+	return scale, s
 
 def sol_Bs(sig_p, M_p):
 	t = (sig_p/M_p)**2
