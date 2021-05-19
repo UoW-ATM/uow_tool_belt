@@ -25,8 +25,8 @@ class EmptyConnection(dict):
 def extract_ssh_parameters(profile):
 	kwargs={}
 	name = profile
-	import Mercury.libs.general_tools3 as general_tools3
-	pouet = os.path.dirname(os.path.dirname(os.path.abspath(general_tools3.__file__)))
+	import general_tools as gt
+	pouet = os.path.dirname(os.path.dirname(os.path.abspath(gt.__file__)))
 	cred = SourceFileLoader(name, jn(pouet, name + '.py')).load_module()
 	cred.__dir__()
 
@@ -91,8 +91,8 @@ def mysql_connection(connection=None, profile=None, path_profile=None, **kwargs)
 			if not 'engine' in kwargs.keys() or kwargs['engine'] is None:
 				name = profile + '_credentials'
 				if path_profile	is None:
-					import Mercury.libs.general_tools3 as general_tools3
-					path_profile = os.path.dirname(os.path.dirname(os.path.abspath(general_tools3.__file__)))
+					import general_tools as gt
+					path_profile = os.path.dirname(os.path.dirname(os.path.abspath(gt.__file__)))
 
 				cred = SourceFileLoader(name, jn(path_profile, name + '.py')).load_module()
 
@@ -142,8 +142,8 @@ def file_connection(connection=None, profile=None, base_path=None, **kwargs):
 	else:
 		if not profile is None:
 			name = profile + '_credentials'
-			import Mercury.libs.general_tools3 as general_tools3
-			pouet = os.path.dirname(os.path.dirname(os.path.abspath(general_tools3.__file__)))
+			import general_tools as gt
+			pouet = os.path.dirname(os.path.dirname(os.path.abspath(gt.__file__)))
 			cred = SourceFileLoader(name, jn(pouet, name + '.py')).load_module()
 
 			if base_path is None:
