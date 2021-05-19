@@ -1,16 +1,21 @@
 import sys
 import contextlib
 import os
-import datetime
+import datetime as dt
 
 from scipy.optimize import minimize_scalar, curve_fit
 import statsmodels.distributions.empirical_distribution as edf
 from scipy.interpolate import interp1d
+from scipy.signal import argrelextrema
+from scipy.stats import pearsonr
+from scipy.special import erfinv
+
+# TODO: sanitise numpy import
 from numpy import *
 import numpy as np
 from numpy.random import randint, choice
-from scipy.signal import argrelextrema
-from scipy.stats import pearsonr
+from numpy.linalg import norm
+
 import networkx as nx
 import imp
 import matplotlib.pyplot as plt
@@ -298,9 +303,9 @@ def clock_time(message_before='',
 		print_function(message_before, end="\r")
 	else:
 		print_function(message_before)
-	start = datetime.datetime.now()
+	start = dt.datetime.now()
 	yield
-	elapsed = datetime.datetime.now() - start
+	elapsed = dt.datetime.now() - start
 
 	if oneline:
 		message = ' '.join([message_before, message_after, str(elapsed)])
@@ -319,9 +324,9 @@ def keep_time(obj, key=None):
 	obj.times[key] = obj.times.get(key, dt.timedelta(0.)) + elapsed
 
 def timeit(f, listt):
-	start=datetime.datetime.now()
+	start = dt.datetime.now()
 	[f(l) for l in listt]
-	elapsed = datetime.datetime.now() - start
+	elapsed = dt.datetime.now() - start
 	print ('Typical time of execution:', elapsed.total_seconds()/float(len(listt)))
 
 def counter(i, end, start=0, message=''):

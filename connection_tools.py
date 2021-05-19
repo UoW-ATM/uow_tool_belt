@@ -2,18 +2,14 @@ import os
 from os.path import join as jn
 import pickle
 
-from numpy import *
-from numpy.linalg import norm
-from scipy.optimize import minimize_scalar
-from scipy.special import erfinv
+#from numpy import *
+
 import pandas as pd
 import tempfile
 from pathlib import Path
 
 from contextlib import contextmanager
 from importlib.machinery import SourceFileLoader
-#from geopy.distance import great_circle as distance_func
-import datetime as dt
 
 from .general_tools import mysql_server, ssh_client_connection, yes
 
@@ -23,7 +19,8 @@ class EmptyConnection(dict):
 		self['type'] = None
 
 def extract_ssh_parameters(profile):
-	kwargs={}
+	# TODO: put a path profile, like mysql_connection
+	kwargs = {}
 	name = profile
 	import general_tools as gt
 	pouet = os.path.dirname(os.path.dirname(os.path.abspath(gt.__file__)))
@@ -91,9 +88,8 @@ def mysql_connection(connection=None, profile=None, path_profile=None, **kwargs)
 			if not 'engine' in kwargs.keys() or kwargs['engine'] is None:
 				name = profile + '_credentials'
 				if path_profile	is None:
-					import general_tools as gt
-					path_profile = os.path.dirname(os.path.dirname(os.path.abspath(gt.__file__)))
-
+					path_profile = Path.cwd()
+					
 				cred = SourceFileLoader(name, jn(path_profile, name + '.py')).load_module()
 
 				for par in ['hostname', 'username', 'password', 'database']:
@@ -130,7 +126,7 @@ def mysql_connection(connection=None, profile=None, path_profile=None, **kwargs)
 				yield mysql_connection
 
 @contextmanager
-def file_connection(connection=None, profile=None, base_path=None, **kwargs):
+def file_connection(connection=None, profile=None, path_profile=None, base_path=None, **kwargs):
 	"""
 	To uniformise with mysql connection
 	profile can be any string corresponding to a file 'db_profile_credentials.py'
@@ -142,9 +138,10 @@ def file_connection(connection=None, profile=None, base_path=None, **kwargs):
 	else:
 		if not profile is None:
 			name = profile + '_credentials'
-			import general_tools as gt
-			pouet = os.path.dirname(os.path.dirname(os.path.abspath(gt.__file__)))
-			cred = SourceFileLoader(name, jn(pouet, name + '.py')).load_module()
+			if path_profile is None:
+				path_profile = Path.cwd()
+			
+			cred = SourceFileLoader(name, jn(path_profile, name + '.py')).load_module()
 
 			if base_path is None:
 				try:
