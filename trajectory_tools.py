@@ -70,6 +70,7 @@ def detect_toc_tod(traj, n_p=3, slopes=False, cut_off_altitude=100):
 	"""
 	Traj needs to be a pandas DataFrame with at least columns "alt" and "d" 
 	"""
+	
 	mask = abs((traj.loc[:, 'alt'].max()-traj.loc[:, 'alt'])) <cut_off_altitude
 
 	ab = compute_ab(traj['d'], traj['alt'], n_p=n_p, slopes=slopes)
@@ -86,6 +87,7 @@ def plot_traj(traj, toc=None, tod=None):
 	Simple plot of a vertical trajectory
 	and the tod/toc points.
 	"""
+
     fig, ax = subplots()
     ax.plot(traj['d'], traj['alt'])
     ax.scatter(traj['d'], traj['alt'])
