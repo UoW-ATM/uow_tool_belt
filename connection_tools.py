@@ -88,7 +88,7 @@ def mysql_connection(connection=None, profile=None, path_profile=None, **kwargs)
 			if not 'engine' in kwargs.keys() or kwargs['engine'] is None:
 				name = profile + '_credentials'
 				if path_profile	is None:
-					path_profile = Path.cwd()
+					path_profile = Path(__file__).parents[2]
 					
 				cred = SourceFileLoader(name, jn(path_profile, name + '.py')).load_module()
 
@@ -139,7 +139,7 @@ def file_connection(connection=None, profile=None, path_profile=None, base_path=
 		if not profile is None:
 			name = profile + '_credentials'
 			if path_profile is None:
-				path_profile = Path.cwd()
+				path_profile = Path(__file__).parents[2]
 			
 			cred = SourceFileLoader(name, jn(path_profile, name + '.py')).load_module()
 

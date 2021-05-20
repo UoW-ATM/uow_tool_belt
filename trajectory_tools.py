@@ -1,5 +1,8 @@
 import numpy as np
+import pandas as pd
 from numpy.random import normal, uniform, rand, choice
+
+import matplotlib.pyplot as plt
 
 # Simple vertical trajectory creation function
 def create_vertical_trajectory(n=30, loc_climb=7, dalt_cruise=2., p_change_alt_cruise=0.1,
@@ -46,7 +49,8 @@ def create_vertical_trajectory(n=30, loc_climb=7, dalt_cruise=2., p_change_alt_c
 			t += dt
 		traj.append((alt, d, t))
 	
-	return np.array(traj)
+	traj = pd.DataFrame(traj, columns=['alt', 'd', 't'])
+	return traj
 
 def compute_ab(x, y, n_p=5, n_o=0, slopes=False):
 	ab = []
@@ -88,13 +92,13 @@ def plot_traj(traj, toc=None, tod=None):
 	and the tod/toc points.
 	"""
 
-    fig, ax = subplots()
-    ax.plot(traj['d'], traj['alt'])
-    ax.scatter(traj['d'], traj['alt'])
-    
-    if not toc is None:
-        ax.scatter([toc['d']], [toc['alt']], c='r', s=200)
-    if not tod is None:
-        ax.scatter([tod['d']], [tod['alt']], c='y', s=200)
-    return ax
+	fig, ax = plt.subplots()
+	ax.plot(traj['d'], traj['alt'])
+	ax.scatter(traj['d'], traj['alt'])
+	
+	if not toc is None:
+		ax.scatter([toc['d']], [toc['alt']], c='r', s=200)
+	if not tod is None:
+		ax.scatter([tod['d']], [tod['alt']], c='y', s=200)
+	return ax
 
