@@ -336,7 +336,7 @@ def counter(i, end, start=0, message=''):
 		print()
 
 @contextlib.contextmanager
-def write_on_file(name_file):
+def write_on_file(name_file=None):
 	if name_file!=None:
 		with open(name_file, 'w') as f:
 			save_stdout = sys.stdout
@@ -344,7 +344,10 @@ def write_on_file(name_file):
 			yield
 			sys.stdout = save_stdout
 	else:
+		stdout_backup = sys.stdout
+		sys.stdout = None
 		yield
+		sys.stdout = stdout_backup
 
 @contextlib.contextmanager
 def logging(filename, mode='w'):
