@@ -86,11 +86,16 @@ def mysql_connection(connection=None, profile=None, path_profile=None, **kwargs)
 	else:
 		if not profile is None:
 			if not 'engine' in kwargs.keys() or kwargs['engine'] is None:
-				name = profile + '_credentials'
+				name = profile + '_credentials' 
 				if path_profile	is None:
 					path_profile = Path(__file__).parents[2]
-					
-				cred = SourceFileLoader(name, jn(path_profile, name + '.py')).load_module()
+				else:
+					path_profile = Path(path_profile)
+
+				name_py = name + '.py'
+				path = path_profile / name_py
+				print (str(path.resolve()))
+				cred = SourceFileLoader(name, str(path.resolve())).load_module()
 
 				for par in ['hostname', 'username', 'password', 'database']:
 					kwargs[par] = kwargs.get(par, cred.__getattribute__(par))
