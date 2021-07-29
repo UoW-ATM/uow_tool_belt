@@ -295,19 +295,20 @@ def silence(silent):
 			sys.stdout = save_stdout
 
 @contextlib.contextmanager
-def clock_time(message_before='', 
+def clock_time(message_before=None, 
 	message_after='executed in', print_function=print,
 	oneline=False):
 
-	if oneline:
-		print_function(message_before, end="\r")
-	else:
-		print_function(message_before)
+	if message_before is not None:
+		if oneline:
+			print_function(message_before, end="\r")
+		else:
+			print_function(message_before)
 	start = dt.datetime.now()
 	yield
 	elapsed = dt.datetime.now() - start
 
-	if oneline:
+	if oneline and message_before is not None:
 		message = ' '.join([message_before, message_after, str(elapsed)])
 	else:
 		message = ' '.join([message_after, str(elapsed)])
