@@ -1881,3 +1881,11 @@ def weight_avg(df, by=None, weight=None, stats=['mean']):
 			print ('Ignoring unknown', stat, 'statistics')
 		
 	return pd.concat(dfs).unstack(level=0)
+
+def strip_string(s, to_strip):
+	# TODO: same for prefix 
+	# Note: with python 3.9, use removesuffix/removeprefix
+	if s.endswith(to_strip):
+		return s[:-len(to_strip)]
+	else:
+		return s
