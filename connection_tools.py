@@ -293,6 +293,7 @@ def read_csv(file_name='', path='', connection=None, profile=None, **other_paras
 
 def do_query(sql, con):
 	# This section is required, otherwise the the execute part below fails...
+	# TODO: Probably obsolete: need to use sqlalchemy.inspect
 	try:
 		con.run_callable(
 			con.dialect.has_table, sql, None
@@ -605,7 +606,8 @@ def write_mysql(data=None, table_name=None, how='update', key_for_update='id',
 	with mysql_connection(connection=connection, profile=profile) as connection:
 		engine = connection['engine']
 		
-		create_primary_keys = not engine.dialect.has_table(engine, table_name)
+		#create_primary_keys = not engine.dialect.has_table(table_name)
+		create_primary_keys = not sqlalchemy.inspect(engine).has_table(table_name)
 
 		if how == 'replace':
 			question = 'You chose to replace the following database table in output:\n'
@@ -627,7 +629,7 @@ def write_mysql(data=None, table_name=None, how='update', key_for_update='id',
 			#if hard_update:
 			# Remove all entries with attributes matching the ones given in keys_for_update.
 			# TODO: This is slow and stupid, use mysql 'SET' command
-			if engine.dialect.has_table(engine, table_name):
+			if sqlalchemy.inspect(engine).has_table(table_name):
 				with engine.connect() as con:
 					query = 'DELETE FROM ' + table_name + ' WHERE '
 					for key, value in keys_for_update.items():
@@ -635,7 +637,6 @@ def write_mysql(data=None, table_name=None, how='update', key_for_update='id',
 							query +=  key + '="' + str(value) + '" AND '
 						else:
 							query +=  key + '=' + str(value) + ' AND '
-
 					rs = con.execute(query[:-5])
 
 				# Check if all columns are in the existing table, otherwise create them 
