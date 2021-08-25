@@ -295,19 +295,20 @@ def silence(silent):
 			sys.stdout = save_stdout
 
 @contextlib.contextmanager
-def clock_time(message_before='', 
+def clock_time(message_before=None, 
 	message_after='executed in', print_function=print,
 	oneline=False):
 
-	if oneline:
-		print_function(message_before, end="\r")
-	else:
-		print_function(message_before)
+	if message_before is not None:
+		if oneline:
+			print_function(message_before, end="\r")
+		else:
+			print_function(message_before)
 	start = dt.datetime.now()
 	yield
 	elapsed = dt.datetime.now() - start
 
-	if oneline:
+	if oneline and message_before is not None:
 		message = ' '.join([message_before, message_after, str(elapsed)])
 	else:
 		message = ' '.join([message_after, str(elapsed)])
@@ -1515,7 +1516,7 @@ def mysql_server(engine=None, hostname=None, port=None, username=None, password=
 			engine = create_engine('mysql+' + connector + '://' + username + ':' + password + '@' + hostname + '/' + database)
 		else:
 			if ssh_tunnel is None:
-				ssh_tunnel = ssh_tunnel_connection(ssh_parameters,hostname,port,allow_agent,debug_level)
+				ssh_tunnel = ssh_tunnel_connection(ssh_parameters, hostname, port, allow_agent, debug_level)
 				engine = create_engine('mysql+' + connector + '://' + username + ':' + password + '@127.0.0.1:%s/' % ssh_tunnel.local_bind_port + database)
 
 	try:
