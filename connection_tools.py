@@ -511,7 +511,7 @@ def write_csv(data=None, file_name='',  path='', connection=None, profile=None,
 		raise Exception('Not implemented yet')
 
 def write_pickle(data=None, file_name='',  path='', connection=None, profile=None,
-	how='replace', create_folder=True, **other_paras):
+	how='replace', create_folder=True, byte=True, **other_paras):
 	
 	if how!='replace':
 		print ('You chose to save in csv with mode', how)
