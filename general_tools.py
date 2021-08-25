@@ -295,19 +295,20 @@ def silence(silent):
 			sys.stdout = save_stdout
 
 @contextlib.contextmanager
-def clock_time(message_before='', 
+def clock_time(message_before=None, 
 	message_after='executed in', print_function=print,
 	oneline=False):
 
-	if oneline:
-		print_function(message_before, end="\r")
-	else:
-		print_function(message_before)
+	if message_before is not None:
+		if oneline:
+			print_function(message_before, end="\r")
+		else:
+			print_function(message_before)
 	start = dt.datetime.now()
 	yield
 	elapsed = dt.datetime.now() - start
 
-	if oneline:
+	if oneline and message_before is not None:
 		message = ' '.join([message_before, message_after, str(elapsed)])
 	else:
 		message = ' '.join([message_after, str(elapsed)])
@@ -1515,7 +1516,7 @@ def mysql_server(engine=None, hostname=None, port=None, username=None, password=
 			engine = create_engine('mysql+' + connector + '://' + username + ':' + password + '@' + hostname + '/' + database)
 		else:
 			if ssh_tunnel is None:
-				ssh_tunnel = ssh_tunnel_connection(ssh_parameters,hostname,port,allow_agent,debug_level)
+				ssh_tunnel = ssh_tunnel_connection(ssh_parameters, hostname, port, allow_agent, debug_level)
 				engine = create_engine('mysql+' + connector + '://' + username + ':' + password + '@127.0.0.1:%s/' % ssh_tunnel.local_bind_port + database)
 
 	try:
@@ -1888,3 +1889,48 @@ def strip_string(s, to_strip):
 		return s[:-len(to_strip)]
 	else:
 		return s
+
+def get_first_matching_element(iterable, default = None, condition = lambda x: True):
+	"""
+	Returns the first item in the `iterable` that
+	satisfies the `condition`.
+
+	If the condition is not given, returns the first item of
+	the iterable.
+
+	If the `default` argument is given and the iterable is empty,
+	or if it has no items matching the condition, the `default` argument
+	is returned if it matches the condition.
+
+	The `default` argument being None is the same as it not being given.
+
+	Raises `StopIteration` if no item satisfying the condition is found
+	and default is not given or doesn't satisfy the condition.
+
+	>>> first( (1,2,3), condition=lambda x: x % 2 == 0)
+	2
+	>>> first(range(3, 100))
+	3
+	>>> first( () )
+	Traceback (most recent call last):
+	...
+	StopIteration
+	>>> first([], default=1)
+	1
+	>>> first([], default=1, condition=lambda x: x % 2 == 0)
+	Traceback (most recent call last):
+	...
+	StopIteration
+	>>> first([1,3,5], default=1, condition=lambda x: x % 2 == 0)
+	Traceback (most recent call last):
+	...
+	StopIteration
+	"""
+
+	try:
+		return next(x for x in iterable if condition(x))
+	except StopIteration:
+		if default is not None:# and condition(default):
+			return default
+		else:
+			raise

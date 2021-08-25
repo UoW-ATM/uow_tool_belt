@@ -10,6 +10,7 @@ from pathlib import Path
 
 from contextlib import contextmanager
 from importlib.machinery import SourceFileLoader
+import sqlalchemy
 
 from .general_tools import mysql_server, ssh_client_connection, yes
 
@@ -86,22 +87,19 @@ def mysql_connection(connection=None, profile=None, path_profile=None, **kwargs)
 	else:
 		if not profile is None:
 			if not 'engine' in kwargs.keys() or kwargs['engine'] is None:
-				name = profile + '_credentials' 
+				name = profile + '_credentials'
 				if path_profile	is None:
 					path_profile = Path(__file__).parents[2]
-				else:
-					path_profile = Path(path_profile)
-
-				name_py = name + '.py'
-				path = path_profile / name_py
-				print (str(path.resolve()))
-				cred = SourceFileLoader(name, str(path.resolve())).load_module()
+					
+				pat = Path(path_profile) / (name+'.py')
+				
+				cred = SourceFileLoader(name, str(pat.resolve())).load_module()
 
 				for par in ['hostname', 'username', 'password', 'database']:
 					kwargs[par] = kwargs.get(par, cred.__getattribute__(par))
 				kwargs['port'] = kwargs.get('port', 3306)
 				try:
-					kwargs['connector']=cred.__getattribute__('mysql_connector')
+					kwargs['connector'] = cred.__getattribute__('mysql_connector')
 				except:
 					kwargs['connector'] = 'mysqldb'
 
@@ -295,6 +293,7 @@ def read_csv(file_name='', path='', connection=None, profile=None, **other_paras
 
 def do_query(sql, con):
 	# This section is required, otherwise the the execute part below fails...
+	# TODO: Probably obsolete: need to use sqlalchemy.inspect
 	try:
 		con.run_callable(
 			con.dialect.has_table, sql, None
@@ -399,7 +398,7 @@ def read_mysql(select=None, fromm=None, conditions={}, query=None, connection=No
 
 			query = 'SELECT ' + select + ' FROM ' + fromm + ' WHERE '
 			for k, v in conditions.items():
-				if type(v) in[unicode, str]:
+				if type(v) == str:
 					v = '"' + v + '"'
 				else:
 					v = str(v)
@@ -514,7 +513,7 @@ def write_pickle(data=None, file_name='',  path='', connection=None, profile=Non
 	how='replace', create_folder=True, byte=True, **other_paras):
 	
 	if how!='replace':
-		print ('You chose to save in csv with mode', how)
+		print ('You chose to save in pickle with mode', how)
 		if yes("This is not implemented yet, shall I switch to 'replace'?"):
 			how = 'replace'
 		else:
@@ -526,8 +525,6 @@ def write_pickle(data=None, file_name='',  path='', connection=None, profile=Non
 		else:
 			mode = 'w'
 
-		# if profile is None:
-		# 	profile = 'local'
 		with file_connection(connection=connection, profile=profile) as my_file_connection:
 			ppath = Path(path)
 			if ppath.anchor!='/' and not my_file_connection['base_path'] is None:
@@ -536,7 +533,7 @@ def write_pickle(data=None, file_name='',  path='', connection=None, profile=Non
 			full_path = ppath / file_name
 
 			if create_folder:
-				full_path.parent.mkdir(parents=True,
+				full_path.resolve().parent.mkdir(parents=True,
 										exist_ok=True)
 
 			if not my_file_connection['ssh_connection'] is None:
@@ -552,7 +549,7 @@ def write_pickle(data=None, file_name='',  path='', connection=None, profile=Non
 	else:
 		raise Exception('Not implemented yet')
 
-def create_indexes_in_table(engine, table, primary={}, indexes={}):
+def create_indexes_in_table(connection, table, primary={}, indexes={}):
 	if not primary and not indexes:
 		#Need at least one
 		return
@@ -579,7 +576,7 @@ def create_indexes_in_table(engine, table, primary={}, indexes={}):
 
 	sql = sql[:-1]
 	
-	engine.execute(sql)
+	connection['engine'].execute(sql)
 
 def write_mysql(data=None, table_name=None, how='update', key_for_update='id', 
 	keys_for_update={}, connection=None, primary_dict={},
@@ -596,18 +593,21 @@ def write_mysql(data=None, table_name=None, how='update', key_for_update='id',
 		name of table in database.
 	how: string,
 		either 'update', 'replace', or 'append'.
-	key_for_update: string, int, or float,
-		name of key for table row matching.
+	key_for_update: string, int, float, or list
+		name of key(s) for table row matching.
 	engine: sqlalchemy engine object 
 		If given then it is used to do the connection,
 		if missing then it is created based on default parameters
+
+	TODO: harmonise keys_for_update and key_for_update
 	
 	"""
 
 	with mysql_connection(connection=connection, profile=profile) as connection:
 		engine = connection['engine']
 		
-		create_primary_keys = not engine.dialect.has_table(engine, table_name)
+		#create_primary_keys = not engine.dialect.has_table(table_name)
+		create_primary_keys = not sqlalchemy.inspect(engine).has_table(table_name)
 
 		if how == 'replace':
 			question = 'You chose to replace the following database table in output:\n'
@@ -626,62 +626,71 @@ def write_mysql(data=None, table_name=None, how='update', key_for_update='id',
 		if how != 'update':
 			data.to_sql(table_name, engine, if_exists=how, index=index)
 		else:
-			if hard_update:
-				# Remove all entries with attributes matching the ones given in keys_for_update.
-				# TODO: This is slow and stupid, use mysql 'SET' command
-				if engine.dialect.has_table(engine, table_name):
-					with engine.connect() as con:
-						query = 'DELETE FROM ' + table_name + ' WHERE '
-						for key, value in keys_for_update.items():
-							if type(value) is str:
-								query +=  key + '="' + str(value) + '" AND '
-							else:
-								query +=  key + '=' + str(value) + ' AND '
-						rs = con.execute(query[:-5])
+			#if hard_update:
+			# Remove all entries with attributes matching the ones given in keys_for_update.
+			# TODO: This is slow and stupid, use mysql 'SET' command
+			if sqlalchemy.inspect(engine).has_table(table_name):
+				with engine.connect() as con:
+					query = 'DELETE FROM ' + table_name + ' WHERE '
+					for key, value in keys_for_update.items():
+						if type(value) is str:
+							query +=  key + '="' + str(value) + '" AND '
+						else:
+							query +=  key + '=' + str(value) + ' AND '
+					rs = con.execute(query[:-5])
 
-					# Check if all columns are in database
-					df_test = read_mysql(query="SELECT * FROM " + table_name + " LIMIT 1",
-										connection=connection)
-					for col in data.columns:
-						if not str(col) in df_test:
-							mask = ~pd.isnull(data[col])
-							if type(data.loc[mask, col].iloc[0]) in [float, float64]:
-								typ = 'FLOAT'
-							elif type(data.loc[mask, col].iloc[0]) in [int, int64]:
-								typ = 'INT'
-							elif type(data.loc[mask, col].iloc[0]) in [str, unicode]:
-								typ = 'VARCHAR(100)'
-							# elif type(data.loc[mask, col].iloc[0]) in [list, tuple]:
-							# 	max_car = max([len(data.loc[mask, col].iloc[i]) for i in range(len(data.loc[mask, col]))])
-							# 	typ = 'VARCHAR(' + str(max_car*10) + ')'
-							else:
-								print ('Column:', col)
-								raise Exception('Not sure which type of variable I should use for:', type(data[col].iloc[0]))
-							
-							query = "ALTER TABLE " + str(table_name) + " ADD COLUMN `" +\
-									str(col) + "` " + typ
+				# Check if all columns are in the existing table, otherwise create them 
+				df_test = read_mysql(query="SELECT * FROM " + table_name + " LIMIT 1",
+									connection=connection)
+				for col in data.columns:
+					if not str(col) in df_test:
+						mask = ~pd.isnull(data[col])
+						if type(data.loc[mask, col].iloc[0]) in [float, float64]:
+							typ = 'FLOAT'
+						elif type(data.loc[mask, col].iloc[0]) in [int, int64]:
+							typ = 'INT'
+						elif type(data.loc[mask, col].iloc[0]) in [str, unicode]:
+							typ = 'VARCHAR(100)'
+						# elif type(data.loc[mask, col].iloc[0]) in [list, tuple]:
+						# 	max_car = max([len(data.loc[mask, col].iloc[i]) for i in range(len(data.loc[mask, col]))])
+						# 	typ = 'VARCHAR(' + str(max_car*10) + ')'
+						else:
+							print ('Column:', col)
+							raise Exception('Not sure which type of variable I should use for:', type(data[col].iloc[0]))
+						
+						query = "ALTER TABLE " + str(table_name) + " ADD COLUMN `" +\
+								str(col) + "` " + typ
 
-							print ('Attempting to create new column with query:', query)
-							engine.execute(query)
+						print ('Attempting to create new column with query:', query)
+						engine.execute(query)
 
-				if use_temp_csv:
-					load_data_infile(engine, data, table_name)
-				else:
-					data.to_sql(table_name, engine, if_exists='append', index=index)
+			if use_temp_csv:
+				load_data_infile(engine, data, table_name)
 			else:
-				_update_table(data, table_name, key_for_update, engine=engine)
+				data.to_sql(table_name, connection['engine'], if_exists='append', index=index)
+			# else:
+			# 	# Check whether the table exists
+			# 	try:
+			# 		sql = """SELECT * FROM {} LIMIT 1""".format(table_name)
+			# 		dff = read_mysql(query=sql, connection=connection)
+			# 		# If it does, update
+			# 		_update_table(data, table_name, key_for_update, connection=connection)
+			# 	except sqlalchemy.exc.ProgrammingError:
+			# 		# Otherwise, use pandas to create it and dump the data
+			# 		data.to_sql(table_name, connection['engine'], if_exists='append', index=index)		
 
 	if create_primary_keys:
-		create_indexes_in_table(engine=engine,
+		create_indexes_in_table(connection=connection,
 								table=table_name,
 								primary=primary_dict,
 								indexes=index)
 
-def _update_table(new_table, table_name, key_for_update, engine=None):
-	with mysql_connection(engine=engine, profile='remote') as connection:
+def _update_table(new_table, table_name, key_for_update, connection=None):
+	# Not sure this works....
+	with mysql_connection(connection=connection) as connection:
 		# Get the existing table
 		sql = """SELECT * FROM """ + table_name
-		dff = read_mysql(query=sql, engine=connection['engine'])
+		dff = read_mysql(query=sql, connection=connection)
 		
 		mask = new_table[key_for_update].isin(dff[key_for_update])
 		
@@ -713,9 +722,9 @@ def _update_table(new_table, table_name, key_for_update, engine=None):
 			query = "UPDATE " + table_name + " SET"
 
 			for col in new_table.columns:
-				if col!=key_for_update:
+				if col not in key_for_update:
 					value = new_table.loc[idx, col]
-					if type(value) in [str, unicode]:
+					if type(value)==str:
 						value = '"' + value + '"'
 					elif pd.isnull(value):
 						value = 'NULL'
@@ -724,8 +733,14 @@ def _update_table(new_table, table_name, key_for_update, engine=None):
 					query += " " + col + "=" + value +  ","
 
 			query = query[:-1]
-			query += " WHERE " + key_for_update + "=" + str(new_table.loc[idx, key_for_update])
-
+			if type(key_for_update)!=list:
+				query += " WHERE " + key_for_update + "=" + str(new_table.loc[idx, key_for_update])
+			else:
+				query += " WHERE "
+				for key in key_for_update:
+					query += key + "=" + str(new_table.loc[idx, key]) + ' AND '
+				query = query[:-5]
+			
 			connection['engine'].execute(query)
 			
 		# Append other rows
