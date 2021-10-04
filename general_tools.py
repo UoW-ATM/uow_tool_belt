@@ -174,7 +174,7 @@ def haversine(lon1, lat1, lon2, lat2):
 def distance_euclidean(pt1, pt2):
 	return norm(array(pt2)-array(pt1))
 
-def intermetidate_point(lon1, lat1, lon2, lat2, fraction):
+def intermediate_point(lon1, lat1, lon2, lat2, fraction):
 	d = haversine(lon1, lat1, lon2, lat2)
 
 	# convert decimal degrees to radians 
@@ -1513,14 +1513,16 @@ def mysql_server(engine=None, hostname=None, port=None, username=None, password=
 	if engine is None:
 		kill_engine = True
 		if ssh_tunnel is None and ssh_parameters is None:
-			engine = create_engine('mysql+' + connector + '://' + username + ':' + password + '@' + hostname + '/' + database)
+			str_engine = 'mysql+' + connector + '://' + username + ':' + password + '@' + hostname + '/' + database
+			engine = create_engine(str_engine)
 		else:
 			if ssh_tunnel is None:
 				ssh_tunnel = ssh_tunnel_connection(ssh_parameters, hostname, port, allow_agent, debug_level)
-				engine = create_engine('mysql+' + connector + '://' + username + ':' + password + '@127.0.0.1:%s/' % ssh_tunnel.local_bind_port + database)
+				str_engine = 'mysql+' + connector + '://' + username + ':' + password + '@127.0.0.1:%s/' % ssh_tunnel.local_bind_port + database
+				engine = create_engine(str_engine)
 
 	try:
-		yield {'engine':engine, 'ssh_tunnel':ssh_tunnel}
+		yield {'engine':engine, 'ssh_tunnel':ssh_tunnel, 'str_engine':str_engine}
 	finally:
 		if kill_engine:
 			engine.dispose()

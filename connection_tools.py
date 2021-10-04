@@ -1,12 +1,15 @@
 import os
 from os.path import join as jn
 import pickle
+import datetime as dt
 
 #from numpy import *
 
 import pandas as pd
 import tempfile
 from pathlib import Path
+import numpy as np
+#import odo
 
 from contextlib import contextmanager
 from importlib.machinery import SourceFileLoader
@@ -102,7 +105,6 @@ def mysql_connection(connection=None, profile=None, path_profile=None, **kwargs)
 					kwargs['connector'] = cred.__getattribute__('mysql_connector')
 				except:
 					kwargs['connector'] = 'mysqldb'
-
 				print ('DB connection to', kwargs['hostname'], end=" ")
 
 				if not 'ssh_tunnel' in kwargs.keys() or kwargs['ssh_tunnel'] is None:
@@ -643,13 +645,14 @@ def write_mysql(data=None, table_name=None, how='update', key_for_update='id',
 				df_test = read_mysql(query="SELECT * FROM " + table_name + " LIMIT 1",
 									connection=connection)
 				for col in data.columns:
-					if not str(col) in df_test:
+					if not str(col) in df_test.columns:
+						print ("Trying to add column", col, "to", table_name, "table.")
 						mask = ~pd.isnull(data[col])
-						if type(data.loc[mask, col].iloc[0]) in [float, float64]:
+						if type(data.loc[mask, col].iloc[0]) in [float, np.float64]:
 							typ = 'FLOAT'
-						elif type(data.loc[mask, col].iloc[0]) in [int, int64]:
+						elif type(data.loc[mask, col].iloc[0]) in [int, np.int64]:
 							typ = 'INT'
-						elif type(data.loc[mask, col].iloc[0]) in [str, unicode]:
+						elif type(data.loc[mask, col].iloc[0]) in [str]:
 							typ = 'VARCHAR(100)'
 						# elif type(data.loc[mask, col].iloc[0]) in [list, tuple]:
 						# 	max_car = max([len(data.loc[mask, col].iloc[i]) for i in range(len(data.loc[mask, col]))])
@@ -665,6 +668,7 @@ def write_mysql(data=None, table_name=None, how='update', key_for_update='id',
 						engine.execute(query)
 
 			if use_temp_csv:
+				# TODO: replace this with odo (see below)
 				load_data_infile(engine, data, table_name)
 			else:
 				data.to_sql(table_name, connection['engine'], if_exists='append', index=index)
@@ -794,3 +798,56 @@ def load_data_infile(engine, data, table, columns=None, drop_table=False, create
 			engine.execute('set foreign_key_checks = 1')
 
 		temp.close()
+
+def load_data_via_file(connection_mysql, connection_file, data, file_name=None, drop_table=False):
+	# NOT FINISHED!!!!!
+	# In most cases, use load_data_via_odo thereafter
+	# if drop_table:
+	# 	query = "DROP TABLE IF EXISTS "+table
+	# 	# conn = engine.connect()
+	# 	# conn.execute("DROP TABLE IF EXISTS "+table)
+	# 	# conn.close()
+	# 	run_mysql_query(query, connection=connection_mysql)
+
+	if file_name is None:
+		file_name = str(datetime.datetime.now())+"_"+str(np.round(np.random.random()*999999))+".csv"
+
+	# Write file down (directly on the server side)
+	write_data(data,
+				fmt='csv',
+				file_name=file_name,
+				connection=connection_file,
+				index=False,
+				header=True,
+				sep=",",
+				doublequote=True,
+				encoding='utf-8',
+				na_rep="\\N")
+
+	load_data_infile(engine, data, table, drop_table=drop_table)
+
+	#data.to_csv(file_name, index=False, header=True, sep=",", doublequote=True, encoding='utf-8', na_rep="\\N")
+
+def load_to_mysql_via_odo(connection, data, table, file_name=None, drop_table=False):
+	if drop_table:
+		query = "DROP TABLE IF EXISTS "+table
+		run_mysql_query(query, connection=connection)
+
+	if file_name is None:
+		file_name = str(dt.datetime.now())+"_"+str(np.round(np.random.random()*999999))+".csv"
+
+	data.to_csv(file_name, index=False, header=True, sep=",", doublequote=True, encoding='utf-8', na_rep="\\N")
+
+	write_data(data,
+			fmt='csv',
+			file_name=file_name,
+			index=False,
+			header=True,
+			sep=",",
+			doublequote=True,
+			encoding='utf-8',
+			na_rep="\\N")
+
+	odo.odo(file_name, (connection['str_engine'])+"::"+table,**{'local':'LOCAL'})
+
+	os.remove(file_name)
