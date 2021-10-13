@@ -282,7 +282,7 @@ class DummyFile:
 	def flush(self): pass
 
 @contextlib.contextmanager
-def silence(silent):
+def silence(silent=True):
 	if silent:
 		save_stdout = sys.stdout
 		sys.stdout = DummyFile()
@@ -293,6 +293,15 @@ def silence(silent):
 	finally:
 		if silent:
 			sys.stdout = save_stdout
+
+class HiddenPrints:
+	def __enter__(self):
+		self._original_stdout = sys.stdout
+		sys.stdout = open(os.devnull, 'w')
+
+	def __exit__(self, exc_type, exc_val, exc_tb):
+		sys.stdout.close()
+		sys.stdout = self._original_stdout
 
 @contextlib.contextmanager
 def clock_time(message_before=None, 
@@ -1587,7 +1596,6 @@ def build_step_multi_valued_function(df, name_min_col='delay_min_minutes', name_
 	def f(x, col):
 		it = (i for i, v in enumerate(mins) if x  < v)
 		idx = max(0, next(it, len(values)) - 1)
-
 		return values[idx][col]
 	
 	return f
