@@ -174,7 +174,7 @@ def haversine(lon1, lat1, lon2, lat2):
 def distance_euclidean(pt1, pt2):
 	return norm(array(pt2)-array(pt1))
 
-def intermetidate_point(lon1, lat1, lon2, lat2, fraction):
+def intermediate_point(lon1, lat1, lon2, lat2, fraction):
 	d = haversine(lon1, lat1, lon2, lat2)
 
 	# convert decimal degrees to radians 
@@ -282,7 +282,7 @@ class DummyFile:
 	def flush(self): pass
 
 @contextlib.contextmanager
-def silence(silent):
+def silence(silent=True):
 	if silent:
 		save_stdout = sys.stdout
 		sys.stdout = DummyFile()
@@ -293,6 +293,15 @@ def silence(silent):
 	finally:
 		if silent:
 			sys.stdout = save_stdout
+
+class HiddenPrints:
+	def __enter__(self):
+		self._original_stdout = sys.stdout
+		sys.stdout = open(os.devnull, 'w')
+
+	def __exit__(self, exc_type, exc_val, exc_tb):
+		sys.stdout.close()
+		sys.stdout = self._original_stdout
 
 @contextlib.contextmanager
 def clock_time(message_before=None, 
@@ -1513,14 +1522,16 @@ def mysql_server(engine=None, hostname=None, port=None, username=None, password=
 	if engine is None:
 		kill_engine = True
 		if ssh_tunnel is None and ssh_parameters is None:
-			engine = create_engine('mysql+' + connector + '://' + username + ':' + password + '@' + hostname + '/' + database)
+			str_engine = 'mysql+' + connector + '://' + username + ':' + password + '@' + hostname + '/' + database
+			engine = create_engine(str_engine)
 		else:
 			if ssh_tunnel is None:
 				ssh_tunnel = ssh_tunnel_connection(ssh_parameters, hostname, port, allow_agent, debug_level)
-				engine = create_engine('mysql+' + connector + '://' + username + ':' + password + '@127.0.0.1:%s/' % ssh_tunnel.local_bind_port + database)
+				str_engine = 'mysql+' + connector + '://' + username + ':' + password + '@127.0.0.1:%s/' % ssh_tunnel.local_bind_port + database
+				engine = create_engine(str_engine)
 
 	try:
-		yield {'engine':engine, 'ssh_tunnel':ssh_tunnel}
+		yield {'engine':engine, 'ssh_tunnel':ssh_tunnel, 'str_engine':str_engine}
 	finally:
 		if kill_engine:
 			engine.dispose()
@@ -1585,7 +1596,6 @@ def build_step_multi_valued_function(df, name_min_col='delay_min_minutes', name_
 	def f(x, col):
 		it = (i for i, v in enumerate(mins) if x  < v)
 		idx = max(0, next(it, len(values)) - 1)
-
 		return values[idx][col]
 	
 	return f
