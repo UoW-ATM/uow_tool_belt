@@ -44,6 +44,16 @@ def extract_ssh_parameters(profile):
 
 	return kwargs
 
+def read_cred(profile, path_profile=None):
+	name = profile + '_credentials'
+	if path_profile	is None:
+		path_profile = Path(__file__).parents[2]
+		
+	pat = Path(path_profile) / (name+'.py')
+	cred = SourceFileLoader(name, str(pat.resolve())).load_module()
+
+	return cred
+
 @contextmanager
 def generic_connection(typ=None, connection=None, profile=None, path_profile=None, **kwargs):
 	"""
@@ -610,7 +620,7 @@ def write_mysql(data=None, table_name=None, how='update', key_for_update='id',
 		create_primary_keys = not sqlalchemy.inspect(engine).has_table(table_name)
 
 		if how == 'replace':
-			question = 'You chose to replace the following database table in output:\n'
+			question = 'You chose to replace the following database (engine: {}) table in output:\n'.format(connection['engine'])
 			question += ' - ' + table_name + '\n'
 			question += 'Are you sure?'
 			if not yes(question):
@@ -645,11 +655,11 @@ def write_mysql(data=None, table_name=None, how='update', key_for_update='id',
 				for col in data.columns:
 					if not str(col) in df_test:
 						mask = ~pd.isnull(data[col])
-						if type(data.loc[mask, col].iloc[0]) in [float, float64]:
+						if type(data.loc[mask, col].iloc[0]) in [float]:
 							typ = 'FLOAT'
-						elif type(data.loc[mask, col].iloc[0]) in [int, int64]:
+						elif type(data.loc[mask, col].iloc[0]) in [int]:
 							typ = 'INT'
-						elif type(data.loc[mask, col].iloc[0]) in [str, unicode]:
+						elif type(data.loc[mask, col].iloc[0]) in [str]:
 							typ = 'VARCHAR(100)'
 						# elif type(data.loc[mask, col].iloc[0]) in [list, tuple]:
 						# 	max_car = max([len(data.loc[mask, col].iloc[i]) for i in range(len(data.loc[mask, col]))])
