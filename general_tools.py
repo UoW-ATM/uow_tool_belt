@@ -1842,7 +1842,9 @@ def compute_percentile_with_weight(df, by=None, weight=None, cols=None):
 
 def weight_avg(df, by=None, weight=None, stats=['mean']):
 	dfs = {}
-	df = df.select_dtypes(include='number')
+	dfff = df.select_dtypes(include='number')
+	dffg =  df[[col for col in df.columns if (col in by) and (not col in dfff.columns)]]
+	df = pd.concat([dfff, dffg], axis=1)
 	if type(by)==list:
 		pp = [weight] + by
 	else:
