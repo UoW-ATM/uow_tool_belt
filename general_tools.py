@@ -669,9 +669,9 @@ def remove_nan_coupled_lists(list1, list2):
 	return list1, list2
 
 def fit(x, y, first_point=0, last_point=-1, f_fit=None,
-		p0=None, bounds=(-inf, inf)):
+		p0=None, bounds=(-inf, inf), remove_nan=True):
 	"""
-	Simple function for linear fit.
+	Simple function for non-linear fit.
 
 	Parameters
 	==========
@@ -718,7 +718,7 @@ def fit(x, y, first_point=0, last_point=-1, f_fit=None,
 		def f_fit(x, a, b):
 			return a + b*x
 
-	x, y = sort_lists(x, y, remove_nan=True)
+	x, y = sort_lists(x, y, remove_nan=remove_nan)
 	x, y = array(x), array(y)
 
 	popt, pcov = curve_fit(f_fit,
