@@ -161,9 +161,9 @@ def file_connection(connection=None, profile=None, path_profile=None, base_path=
 
 			if base_path is None:
 				try:
-					base_path = cred.__getattribute__('base_path')
+					base_path = Path(cred.__getattribute__('base_path'))
 				except AttributeError:
-					base_path=''
+					base_path = Path('')
 				except:
 					raise
 		
