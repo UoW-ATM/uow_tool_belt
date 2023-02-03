@@ -191,40 +191,40 @@ generic_names = {'RNG':'output_RNG.csv.gz', 'sim_general':'output_sim_general.cs
 				'swaps':'output_swaps.csv.gz', 'eaman':'output_eaman.csv.gz', 'dci':'output_dci.csv.gz',
 				'events':'output_events.csv.gz', 'messages':'output_messages.csv.gz'}
 
-def get_data_csv(model_version=None, profile=None, n_iters=None, scenario=None, fil='flights',
-	generic_names=generic_names, rep='/home/ldel/domino_output/csv_output'):
-	"""
-	High level function to get csv files on the server for model version >=1.25
+# def get_data_csv(model_version=None, profile=None, n_iters=None, scenario=None, fil='flights',
+# 	generic_names=generic_names, rep='/home/ldel/domino_output/csv_output'):
+# 	"""
+# 	High level function to get csv files on the server for model version >=1.25
 	
-	Note: one cannot pass a connection object coming from mysql_server here,
-	they are not the same kind of objects.
-	"""
-	with ssh_connection(profile=profile) as ssh_connection_engine:
-		dfs = []
-		for i in n_iters:
-			print ('Trying to read iteration', i)
-			file_names = {k:str(model_version)+"_"+str(scenario)+"_"+str(i)+"_"+file_name for k, file_name in generic_names.items()}
+# 	Note: one cannot pass a connection object coming from mysql_server here,
+# 	they are not the same kind of objects.
+# 	"""
+# 	with ssh_connection(profile=profile) as ssh_connection_engine:
+# 		dfs = []
+# 		for i in n_iters:
+# 			print ('Trying to read iteration', i)
+# 			file_names = {k:str(model_version)+"_"+str(scenario)+"_"+str(i)+"_"+file_name for k, file_name in generic_names.items()}
 
-			try:
-				df = read_data(jn(rep,file_names[fil]),
-									profile=profile,
-									compression='gzip',
-									which='csv',
-									index_col=0,
-									ssh_connection_engine=ssh_connection_engine)
-				for st in ['aobt', 'sobt', 'aibt', 'sibt']:
-					if st in df.columns:
-						df[st] = pd.to_datetime(df.aobt)
-				dfs.append(df)
-			except FileNotFoundError:
-				print ('Iteration not found')
-				pass
-			except:
-				raise
-			#df.head()
-		df = pd.concat(dfs)
+# 			try:
+# 				df = read_data(jn(rep,file_names[fil]),
+# 									profile=profile,
+# 									compression='gzip',
+# 									which='csv',
+# 									index_col=0,
+# 									ssh_connection_engine=ssh_connection_engine)
+# 				for st in ['aobt', 'sobt', 'aibt', 'sibt']:
+# 					if st in df.columns:
+# 						df[st] = pd.to_datetime(df.aobt)
+# 				dfs.append(df)
+# 			except FileNotFoundError:
+# 				print ('Iteration not found')
+# 				pass
+# 			except:
+# 				raise
+# 			#df.head()
+# 		df = pd.concat(dfs)
 		
-	return df
+# 	return df
 
 def read_data(fmt=None, connection=None, profile=None, **kwargs):
 	"""
@@ -714,9 +714,9 @@ def _update_table(new_table, table_name, key_for_update, connection=None):
 		for col in new_table.columns:
 			if not col in dff.columns:
 				typ = type(new_table[col].iloc[0])
-				if typ in [int, int64]:
+				if typ in [int, np.int64]:
 					type_sql = 'INT'
-				elif typ in [float, float64]:
+				elif typ in [float, np.float64]:
 					type_sql = 'FLOAT'
 				elif typ in [str, unicode]:
 					type_sql = 'VARCHAR(255)'
@@ -809,55 +809,55 @@ def load_data_infile(engine, data, table, columns=None, drop_table=False, create
 
 		temp.close()
 
-def load_data_via_file(connection_mysql, connection_file, data, file_name=None, drop_table=False):
-	# NOT FINISHED!!!!!
-	# In most cases, use load_data_via_odo thereafter
-	# if drop_table:
-	# 	query = "DROP TABLE IF EXISTS "+table
-	# 	# conn = engine.connect()
-	# 	# conn.execute("DROP TABLE IF EXISTS "+table)
-	# 	# conn.close()
-	# 	run_mysql_query(query, connection=connection_mysql)
+# def load_data_via_file(connection_mysql, connection_file, data, file_name=None, drop_table=False):
+# 	# NOT FINISHED!!!!!
+# 	# In most cases, use load_data_via_odo thereafter
+# 	# if drop_table:
+# 	# 	query = "DROP TABLE IF EXISTS "+table
+# 	# 	# conn = engine.connect()
+# 	# 	# conn.execute("DROP TABLE IF EXISTS "+table)
+# 	# 	# conn.close()
+# 	# 	run_mysql_query(query, connection=connection_mysql)
 
-	if file_name is None:
-		file_name = str(datetime.datetime.now())+"_"+str(np.round(np.random.random()*999999))+".csv"
+# 	if file_name is None:
+# 		file_name = str(datetime.datetime.now())+"_"+str(np.round(np.random.random()*999999))+".csv"
 
-	# Write file down (directly on the server side)
-	write_data(data,
-				fmt='csv',
-				file_name=file_name,
-				connection=connection_file,
-				index=False,
-				header=True,
-				sep=",",
-				doublequote=True,
-				encoding='utf-8',
-				na_rep="\\N")
+# 	# Write file down (directly on the server side)
+# 	write_data(data,
+# 				fmt='csv',
+# 				file_name=file_name,
+# 				connection=connection_file,
+# 				index=False,
+# 				header=True,
+# 				sep=",",
+# 				doublequote=True,
+# 				encoding='utf-8',
+# 				na_rep="\\N")
 
-	load_data_infile(engine, data, table, drop_table=drop_table)
+# 	load_data_infile(engine, data, table, drop_table=drop_table)
 
 	#data.to_csv(file_name, index=False, header=True, sep=",", doublequote=True, encoding='utf-8', na_rep="\\N")
 
-def load_to_mysql_via_odo(connection, data, table, file_name=None, drop_table=False):
-	if drop_table:
-		query = "DROP TABLE IF EXISTS "+table
-		run_mysql_query(query, connection=connection)
+# def load_to_mysql_via_odo(connection, data, table, file_name=None, drop_table=False):
+# 	if drop_table:
+# 		query = "DROP TABLE IF EXISTS "+table
+# 		run_mysql_query(query, connection=connection)
 
-	if file_name is None:
-		file_name = str(dt.datetime.now())+"_"+str(np.round(np.random.random()*999999))+".csv"
+# 	if file_name is None:
+# 		file_name = str(dt.datetime.now())+"_"+str(np.round(np.random.random()*999999))+".csv"
 
-	data.to_csv(file_name, index=False, header=True, sep=",", doublequote=True, encoding='utf-8', na_rep="\\N")
+# 	data.to_csv(file_name, index=False, header=True, sep=",", doublequote=True, encoding='utf-8', na_rep="\\N")
 
-	write_data(data,
-			fmt='csv',
-			file_name=file_name,
-			index=False,
-			header=True,
-			sep=",",
-			doublequote=True,
-			encoding='utf-8',
-			na_rep="\\N")
+# 	write_data(data,
+# 			fmt='csv',
+# 			file_name=file_name,
+# 			index=False,
+# 			header=True,
+# 			sep=",",
+# 			doublequote=True,
+# 			encoding='utf-8',
+# 			na_rep="\\N")
 
-	odo.odo(file_name, (connection['str_engine'])+"::"+table,**{'local':'LOCAL'})
+# 	odo.odo(file_name, (connection['str_engine'])+"::"+table,**{'local':'LOCAL'})
 
-	os.remove(file_name)
+# 	os.remove(file_name)

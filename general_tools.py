@@ -24,7 +24,8 @@ import matplotlib.colors as mcolors
 from paramiko import SSHClient
 from scp import SCPClient
 import string
-import multiprocessing as mp
+#import multiprocessing as mp
+from concurrent.futures import ProcessPoolExecutor as Pool
 from contextlib import contextmanager
 from sshtunnel import SSHTunnelForwarder, open_tunnel
 from sqlalchemy import create_engine
@@ -36,6 +37,7 @@ from collections import OrderedDict
 import pickle
 from livestats import livestats
 from termcolor import colored
+from itertools import repeat
 
 
 R = 6373
@@ -85,12 +87,19 @@ alert_print = build_col_print_func('red') # | grep '^[\[31m' --> Ctr-V ESC --> o
 # dman_print = build_col_print_func('cyan', verbose=verbose) # | grep '^[\[37m'
 # """other possible colours: grey"""
 
-
+# This is unusable with multiprocessing due to the nested definition
 def percentile_custom(n):
 	def percentile_(x):
 		return percentile(x, n)
 	percentile_.__name__ = 'percentile_%s' % n
 	return percentile_
+
+# This is usable with multiprocessing
+def percentile_90(x):
+	return percentile(x, 90)
+
+def percentile_10(x):
+	return percentile(x, 10)
 
 def inverted_edf(x):
 	"""
@@ -669,9 +678,9 @@ def remove_nan_coupled_lists(list1, list2):
 	return list1, list2
 
 def fit(x, y, first_point=0, last_point=-1, f_fit=None,
-		p0=None, bounds=(-inf, inf)):
+		p0=None, bounds=(-inf, inf), remove_nan=True):
 	"""
-	Simple function for linear fit.
+	Simple function for non-linear fit.
 
 	Parameters
 	==========
@@ -718,7 +727,7 @@ def fit(x, y, first_point=0, last_point=-1, f_fit=None,
 		def f_fit(x, a, b):
 			return a + b*x
 
-	x, y = sort_lists(x, y, remove_nan=True)
+	x, y = sort_lists(x, y, remove_nan=remove_nan)
 	x, y = array(x), array(y)
 
 	popt, pcov = curve_fit(f_fit,
@@ -1279,44 +1288,11 @@ def alphabet(length):
 
 # This is for parallel computation (independent runs).
 # Typical use: 
-# Take a function do((A, B, C))
-# take a list of inputs, e.g. inputs = [(a1, b1, c1), (a2, b2, c2), (a3, b3, c3)]
-# Compute result with: results_list = parmap(do, inputs)
-# UNTESTED YET FOR PYTHON3
-
-# def spawn(f):
-#     def fun(pipe, x):
-#         pipe.send(f(x))
-#         pipe.close()
-#     return fun
-
-# def parmap(f,X):
-#     pipe = [Pipe() for x in X]
-#     proc = [Process(target=spawn(f), args=(c,x)) for x,(p,c) in izip(X, pipe)]
-#     [p.start() for p in proc]
-#     [p.join() for p in proc]
-#     return [p.recv() for (p,c) in pipe]
-
-# New stuff 
-def parallelize_old(f, inputs, nprocs=None):
-	"""
-	Parameters
-	==========
-	f: function,
-		e.g. with calling signature (A, B, C)
-	inputs: iterable,
-		list of inputs for function, e.g. [(a1, b1, c1), (a2, b2, c2), (a3, b3, c3)]
-	nprocs: int,
-		number of processes to create. If None, max number of processes.
-	"""
-
-	pool = mp.Pool(nprocs)
-
-	results = pool.starmap(f, inputs)
-
-	return results
-
-from itertools import repeat
+# Take a function f(a, b, c=1, d=1)
+# Take a list of inputs, e.g.:
+# args = [(a1, b1), (a2, b2)]
+# kwargs = [{'c:1', 'd':20}, {'c:10', 'd':40}] 
+# Compute results with: results_gen = parallelize(f, args=args, kwargs=kwargs, nprocs=2)
 
 def parallelize(f, args=None, kwargs=None, nprocs=None):
 	"""
@@ -1338,105 +1314,22 @@ def parallelize(f, args=None, kwargs=None, nprocs=None):
 	if args is None:
 		args = [()]*len(kwargs)
 
-	pool = mp.Pool(nprocs)
-	
-	results = starmap_with_kwargs(pool, f, args, kwargs)
+	with Pool(max_workers=nprocs) as pool:
+		results = starmap_with_kwargs(pool, f, args, kwargs)
 
 	return results
 
 def starmap_with_kwargs(pool, fn, args_iter, kwargs_iter):
 	# taken from https://stackoverflow.com/questions/45718523/pass-kwargs-to-starmap-while-using-pool-in-python
+	# Modified with new Pool
 
-	args_for_starmap = zip(repeat(fn), args_iter, kwargs_iter)
+	# The double zip below is here because it is easier to use the function repeat
+	args_for_starmap = list(zip(*zip(repeat(fn), args_iter, kwargs_iter)))
 
-	return pool.starmap(apply_args_and_kwargs, args_for_starmap)
+	return pool.map(apply_args_and_kwargs, *args_for_starmap)
 
 def apply_args_and_kwargs(fn, args, kwargs):
 	return fn(*args, **kwargs)
-
-def fun(f, q_in, q_out):
-	while True:
-		i, x = q_in.get()
-		if i is None:
-			break
-		q_out.put((i, f(*x)))
-
-def function_with_queues(f,q_in, q_out):
-	while True:
-		data = q_in.get()
-		i = data[0]
-		data = data[1]
-		if data == None:
-			break
-		res = f(*data)
-		q_out.put((i,res))
-
-def parmap(f, X, nprocs=mp.cpu_count()):
-	"""
-	Typical use:
-	inputs = [(a, ) for a in aa]
-	results = parmap(f, inputs)
- 
-	where f(a) for instance.
-	"""
-	#Create input and output queues
-	q_in = mp.Queue()
-	q_out = mp.Queue()
-
-	#Launch processes with queu in an out
-	proc = [mp.Process(target=function_with_queues, args=(f, q_in, q_out))
-			for _ in range(nprocs)]
-
-	[p.start() for p in proc]
-	
-	#Producer of input
-	[q_in.put((i,item)) for i,item in enumerate(X)] #Put i so that we can keep track of order to sort at return
-	[q_in.put((None,None)) for _ in range(nprocs)] #Put None at the end so that the consummer finish
-
-	#Close the queues
-	q_in.close()
-	q_in.join_thread()
-
-	#Join the processes (wait for them to finish)
-	[p.join() for p in proc]
-	
-
-	#Read results
-	res=[]
-	while not q_out.empty():
-		res = res+[q_out.get()]
-
-	#Close out queue
-	q_out.close()
-	q_out.join_thread()
-
-	#Return results ordered
-	return [x for i, x in sorted(res)]
-
-def parmap2(f, X, nprocs=mp.cpu_count()):
-	"""
-	Typical use:
-	inputs = [(a, ) for a in aa]
-	results = parmap(f, inputs)
-	where f(a) for instance.
-	"""
-
-	q_in = mp.Queue(1)
-	q_out = mp.Queue()
-
-	proc = [mp.Process(target=fun, args=(f, q_in, q_out))
-			for _ in range(nprocs)]
-	for p in proc:
-		p.daemon = True
-		p.start()
-
-	sent = [q_in.put((i, x)) for i, x in enumerate(X)]
-	[q_in.put((None, None)) for _ in range(nprocs)]
-	res = [q_out.get() for _ in range(len(sent))]
-
-	[p.join() for p in proc]
-
-	return [x for i, x in sorted(res)]
 
 def spread_integer(n, n_cap):
 	X = []
