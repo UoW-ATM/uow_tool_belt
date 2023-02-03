@@ -161,9 +161,9 @@ def file_connection(connection=None, profile=None, path_profile=None, base_path=
 
 			if base_path is None:
 				try:
-					base_path = cred.__getattribute__('base_path')
+					base_path = Path(cred.__getattribute__('base_path'))
 				except AttributeError:
-					base_path=''
+					base_path = Path('')
 				except:
 					raise
 		
@@ -252,22 +252,18 @@ def read_data(fmt=None, connection=None, profile=None, **kwargs):
 		else:
 			if fmt is None:
 				if 'file_name' in kwargs.keys():
-					print (kwargs['file_name'].split('.')[-1])
-				
-					if kwargs['file_name'].split('.')[-1]=='csv':
+					if '.csv' in kwargs['file_name']:
 						fmt = 'csv'
-					elif kwargs['file_name'].split('.')[-1]=='pic':
+					elif '.pic' in kwargs['file_name']:
 						fmt = 'pickle'
 					else:
 						raise Exception("I could not guess the data format for", kwargs['file_name'], 'you need to pass it manually with fmt=')
 	else:
 		if fmt is None:
 			if 'file_name' in kwargs.keys():
-				#print (kwargs['file_name'])
-				print (kwargs['file_name'].split('.')[-1])
-				if kwargs['file_name'].split('.')[-1]=='csv':
+				if '.csv' in kwargs['file_name']:
 					fmt = 'csv'
-				elif kwargs['file_name'].split('.')[-1]=='pic':
+				elif '.pic' in kwargs['file_name']:
 					fmt = 'pickle'
 				else:
 					raise Exception("I could not guess the data format for", kwargs['file_name'], 'you need to pass it manually with fmt=')
@@ -457,19 +453,18 @@ def write_data(data, fmt=None, connection=None, profile=None, **kwargs):
 		else:
 			if fmt is None:
 				if 'file_name' in kwargs.keys():
-					if kwargs['file_name'].split('.')[-1]=='csv':
+					if '.csv' in kwargs['file_name']:
 						fmt = 'csv'
-					elif kwargs['file_name'].split('.')[-1]=='pic':
+					elif '.pic' in kwargs['file_name']:
 						fmt = 'pickle'
 					else:
 						raise Exception("I could not guess the data format for", kwargs['file_name'], 'you need to pass it manually with fmt=')
 	else:
 		if fmt is None:
 			if 'file_name' in kwargs.keys():
-				#print (kwargs['file_name'])
-				if kwargs['file_name'].split('.')[-1]=='csv':
+				if '.csv' in kwargs['file_name']:
 					fmt = 'csv'
-				elif kwargs['file_name'].split('.')[-1]=='pic':
+				elif '.pic' in kwargs['file_name']:
 					fmt = 'pickle'
 				else:
 					raise Exception("I could not guess the data format for", kwargs['file_name'], 'you need to pass it manually with fmt=')
