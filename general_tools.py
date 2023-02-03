@@ -303,7 +303,7 @@ class HiddenPrints:
 		sys.stdout.close()
 		sys.stdout = self._original_stdout
 
-@contextlib.contextmanager
+@contextmanager
 def clock_time(message_before=None, 
 	message_after='executed in', print_function=print,
 	oneline=False):
@@ -931,8 +931,8 @@ def simple_color_map_function(color1, color2, min_value=0., max_value=1.):
 
 	def f(value):
 		norm_value = (float(max_value)-float(value))/(float(max_value)-float(min_value))
-		avg = average(array([color1, color2]), axis=0, weights=[norm_value, 1. - norm_value])
-		return clip(avg, 0., 1.)
+		avg = np.average(np.array([color1, color2]), axis=0, weights=[norm_value, 1. - norm_value])
+		return np.clip(avg, 0., 1.)
 	return f
 
 def simple_colormap_object(cmap_f, min_value=0., max_value=1., k=100):
@@ -940,7 +940,7 @@ def simple_colormap_object(cmap_f, min_value=0., max_value=1., k=100):
 	This is designed to used in conjunction with the above function
 
 	To make the color map legend, do:
-	cbar = fig.colorbar(sm) # use the right-hand side with subplots, ax=axes[:])
+	cbar = fig.colorbar(sm, ax=ax)
 	cbar.ax.set_ylabel('Statistical significance')
 	"""
 	cmap, norm = mcolors.from_levels_and_colors(linspace(min_value, max_value, k+1),
@@ -1946,3 +1946,52 @@ def get_first_matching_element(iterable, default = None, condition = lambda x: T
 			return default
 		else:
 			raise
+
+def set_interval(x, intervals=None):
+	"""
+	Designed to work with the df apply function.
+	Finds where the value x lies in the intervals.
+	"""
+	return get_first_matching_element(intervals, default=np.nan, condition=lambda y: y>=x)
+
+def groupby_on_quantiles(df, col, qs=np.arange(0.1, 1.1, 0.1), mets=['mean', 'sem']):
+	"""
+	Averages a df on the quantile of the columns col
+	"""
+	set_q = lambda x: set_interval(x, intervals=df[col].quantile(qs))
+
+	df['{}_q'.format(col)] = df[col].apply(set_q)
+
+	return df.groupby('{}_q'.format(col))
+
+def average_on_quantiles(df, col, qs=np.arange(0.1, 1.1, 0.1)):
+
+	return groupby_on_quantiles(df, col, qs=qs).agg(mets)
+
+def groupby_on_intervals(df, col, intervals=[]):
+	"""
+	Averages a df on the quantile of the columns col
+	"""
+	set_i = lambda x: set_interval(x, intervals=intervals)
+
+	df['{}_interval'.format(col)] = df[col].apply(set_i)
+
+	return df.groupby('{}_interval'.format(col))
+
+def average_on_intervals(df, col, intervals=[], mets=['mean', 'sem']):
+
+	return groupby_on_intervals(df, col, intervals=intervals).agg(mets)
+
+def groupby_on_downsampled_interval(df, col, n=10):
+	"""
+	"""
+
+	intervals = linspace(df[col].min(), df[col].max(), n)
+
+	return groupby_on_intervals(df, col, intervals=intervals)
+
+def average_on_downsampled_interval(df, col, n=10, mets=['mean', 'sem']):
+	"""
+	"""
+
+	return groupby_on_downsampled_interval(df, col, n=n).agg(mets)

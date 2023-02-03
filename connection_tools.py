@@ -475,7 +475,6 @@ def write_data(data, fmt=None, connection=None, profile=None, **kwargs):
 					raise Exception("I could not guess the data format for", kwargs['file_name'], 'you need to pass it manually with fmt=')
 
 	if fmt=='mysql':
-		#write_mysql(what, where, how=how, connection=connection, **kwargs_extra)
 		write_mysql(data=data, connection=connection, profile=profile, **kwargs)
 	elif fmt=='csv':
 		write_csv(data=data, connection=connection, profile=profile, **kwargs)
