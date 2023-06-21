@@ -1,7 +1,41 @@
+import sys
 import contextlib
-from collections import OrderedDict
+import os
+import datetime as dt
+
+from scipy.optimize import minimize_scalar, curve_fit
+import statsmodels.distributions.empirical_distribution as edf
+from scipy.interpolate import interp1d
+from scipy.signal import argrelextrema
+from scipy.stats import pearsonr
+from scipy.special import erfinv
+
+# TODO: sanitise numpy import
+from numpy import *
 import numpy as np
+from numpy.random import randint, choice
+from numpy.linalg import norm
+
+import networkx as nx
+import imp
+import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
+#from mpl_toolkits.basemap import Basemap
+from paramiko import SSHClient
+from scp import SCPClient
+import string
+import multiprocessing as mp
+from contextlib import contextmanager
+from sshtunnel import SSHTunnelForwarder, open_tunnel
+from sqlalchemy import create_engine
+from itertools import permutations, islice
+from math import radians, cos, sin, asin, sqrt, atan2
 import pandas as pd
+from mpmath import polyroots
+from collections import OrderedDict
+import pickle
+from livestats import livestats
+from termcolor import colored
 
 
 R = 6373
@@ -51,12 +85,19 @@ alert_print = build_col_print_func('red') # | grep '^[\[31m' --> Ctr-V ESC --> o
 # dman_print = build_col_print_func('cyan', verbose=verbose) # | grep '^[\[37m'
 # """other possible colours: grey"""
 
-
+# This is unusable with multiprocessing due to the nested definition
 def percentile_custom(n):
 	def percentile_(x):
 		return np.percentile(x, n)
 	percentile_.__name__ = 'percentile_%s' % n
 	return percentile_
+
+# This is usable with multiprocessing
+def percentile_90(x):
+	return percentile(x, 90)
+
+def percentile_10(x):
+	return percentile(x, 10)
 
 def inverted_edf(x):
 	"""
@@ -143,7 +184,7 @@ def distance_euclidean(pt1, pt2):
 	from numpy.linalg import norm
 	return norm(np.array(pt2)-np.array(pt1))
 
-def intermetidate_point(lon1, lat1, lon2, lat2, fraction):
+def intermediate_point(lon1, lat1, lon2, lat2, fraction):
 	from math import radians, cos, sin, sqrt, atan2, pi
 
 	d = haversine(lon1, lat1, lon2, lat2)
@@ -257,7 +298,7 @@ class DummyFile:
 	def flush(self): pass
 
 @contextlib.contextmanager
-def silence(silent):
+def silence(silent=True):
 	import sys
 	if silent:
 		save_stdout = sys.stdout
@@ -270,22 +311,32 @@ def silence(silent):
 		if silent:
 			sys.stdout = save_stdout
 
+class HiddenPrints:
+	def __enter__(self):
+		self._original_stdout = sys.stdout
+		sys.stdout = open(os.devnull, 'w')
+
+	def __exit__(self, exc_type, exc_val, exc_tb):
+		sys.stdout.close()
+		sys.stdout = self._original_stdout
+
 @contextlib.contextmanager
-def clock_time(message_before='', 
+def clock_time(message_before=None, 
 	message_after='executed in', print_function=print,
 	oneline=False):
 
 	import datetime as dt
 
-	if oneline:
-		print_function(message_before, end="\r")
-	else:
-		print_function(message_before)
+	if message_before is not None:
+		if oneline:
+			print_function(message_before, end="\r")
+		else:
+			print_function(message_before)
 	start = dt.datetime.now()
 	yield
 	elapsed = dt.datetime.now() - start
 
-	if oneline:
+	if oneline and message_before is not None:
 		message = ' '.join([message_before, message_after, str(elapsed)])
 	else:
 		message = ' '.join([message_after, str(elapsed)])
@@ -319,7 +370,7 @@ def counter(i, end, start=0, message=''):
 		print()
 
 @contextlib.contextmanager
-def write_on_file(name_file):
+def write_on_file(name_file=None):
 	import sys
 	if name_file!=None:
 		with open(name_file, 'w') as f:
@@ -328,7 +379,10 @@ def write_on_file(name_file):
 			yield
 			sys.stdout = save_stdout
 	else:
+		stdout_backup = sys.stdout
+		sys.stdout = None
 		yield
+		sys.stdout = stdout_backup
 
 @contextlib.contextmanager
 def logging(filename, mode='w'):
@@ -371,7 +425,6 @@ def recursive_minimization(f, bounds, n=100, depth=0, max_depth=5, target=-1, to
 			res = minimize_scalar(f, tol = tol, bracket = [r_mins[i], r_inits[i], r_maxs[i]])
 		else:
 			res = minimize_scalar(f, tol = tol, bracket = [r_mins[i], r_maxs[i]])
-
 		if (res['fun']-target)<tol:
 			res['message'] = 'Solution found.'
 		else:
@@ -632,7 +685,7 @@ def remove_nan_coupled_lists(list1, list2):
 	return list1, list2
 
 def fit(x, y, first_point=0, last_point=-1, f_fit=None,
-		p0=None, bounds=(-np.inf, np.inf)):
+		p0=None, bounds=(-np.inf, np.inf), remove_nan=True):
 	"""
 	Simple function for linear fit.
 
@@ -683,7 +736,7 @@ def fit(x, y, first_point=0, last_point=-1, f_fit=None,
 		def f_fit(x, a, b):
 			return a + b*x
 
-	x, y = sort_lists(x, y, remove_nan=True)
+	x, y = sort_lists(x, y, remove_nan=remove_nan)
 	x, y = np.array(x), np.array(y)
 
 	popt, pcov = curve_fit(f_fit,
@@ -1249,8 +1302,6 @@ def show_dic(dic):
 			print (k, ":", v)
 
 def alphabet(length):
-	import string
-
 	# Generate 'A', B', then 'AA', 'BB', etc.
 	letters = list(string.ascii_uppercase)
 	while len(letters)<length:
@@ -1260,45 +1311,11 @@ def alphabet(length):
 
 # This is for parallel computation (independent runs).
 # Typical use: 
-# Take a function do((A, B, C))
-# take a list of inputs, e.g. inputs = [(a1, b1, c1), (a2, b2, c2), (a3, b3, c3)]
-# Compute result with: results_list = parmap(do, inputs)
-# UNTESTED YET FOR PYTHON3
-
-# def spawn(f):
-#     def fun(pipe, x):
-#         pipe.send(f(x))
-#         pipe.close()
-#     return fun
-
-# def parmap(f,X):
-#     pipe = [Pipe() for x in X]
-#     proc = [Process(target=spawn(f), args=(c,x)) for x,(p,c) in izip(X, pipe)]
-#     [p.start() for p in proc]
-#     [p.join() for p in proc]
-#     return [p.recv() for (p,c) in pipe]
-
-# New stuff 
-def parallelize_old(f, inputs, nprocs=None):
-	"""
-	Parameters
-	==========
-	f: function,
-		e.g. with calling signature (A, B, C)
-	inputs: iterable,
-		list of inputs for function, e.g. [(a1, b1, c1), (a2, b2, c2), (a3, b3, c3)]
-	nprocs: int,
-		number of processes to create. If None, max number of processes.
-	"""
-	import multiprocessing as mp
-
-	pool = mp.Pool(nprocs)
-
-	results = pool.starmap(f, inputs)
-
-	return results
-
-from itertools import repeat
+# Take a function f(a, b, c=1, d=1)
+# Take a list of inputs, e.g.:
+# args = [(a1, b1), (a2, b2)]
+# kwargs = [{'c:1', 'd':20}, {'c:10', 'd':40}] 
+# Compute results with: results_gen = parallelize(f, args=args, kwargs=kwargs, nprocs=2)
 
 def parallelize(f, args=None, kwargs=None, nprocs=None):
 	"""
@@ -1322,116 +1339,22 @@ def parallelize(f, args=None, kwargs=None, nprocs=None):
 	if args is None:
 		args = [()]*len(kwargs)
 
-	pool = mp.Pool(nprocs)
-	
-	results = starmap_with_kwargs(pool, f, args, kwargs)
+	with Pool(max_workers=nprocs) as pool:
+		results = starmap_with_kwargs(pool, f, args, kwargs)
 
 	return results
 
 def starmap_with_kwargs(pool, fn, args_iter, kwargs_iter):
 	# taken from https://stackoverflow.com/questions/45718523/pass-kwargs-to-starmap-while-using-pool-in-python
+	# Modified with new Pool
 
-	args_for_starmap = zip(repeat(fn), args_iter, kwargs_iter)
+	# The double zip below is here because it is easier to use the function repeat
+	args_for_starmap = list(zip(*zip(repeat(fn), args_iter, kwargs_iter)))
 
-	return pool.starmap(apply_args_and_kwargs, args_for_starmap)
+	return pool.map(apply_args_and_kwargs, *args_for_starmap)
 
 def apply_args_and_kwargs(fn, args, kwargs):
 	return fn(*args, **kwargs)
-
-def fun(f, q_in, q_out):
-	while True:
-		i, x = q_in.get()
-		if i is None:
-			break
-		q_out.put((i, f(*x)))
-
-def function_with_queues(f,q_in, q_out):
-	while True:
-		data = q_in.get()
-		i = data[0]
-		data = data[1]
-		if data == None:
-			break
-		res = f(*data)
-		q_out.put((i,res))
-
-def parmap(f, X, nprocs=None):
-	"""
-	Typical use:
-	inputs = [(a, ) for a in aa]
-	results = parmap(f, inputs)
- 
-	where f(a) for instance.
-	"""
-
-	import multiprocessing as mp
-
-	if nprocs is None:
-		nprocs = mp.cpu_count()
-
-	#Create input and output queues
-	q_in = mp.Queue()
-	q_out = mp.Queue()
-
-	#Launch processes with queue in an out
-	proc = [mp.Process(target=function_with_queues, args=(f, q_in, q_out))
-			for _ in range(nprocs)]
-
-	[p.start() for p in proc]
-	
-	#Producer of input
-	[q_in.put((i,item)) for i,item in enumerate(X)] #Put i so that we can keep track of order to sort at return
-	[q_in.put((None,None)) for _ in range(nprocs)] #Put None at the end so that the consumer finish
-
-	#Close the queues
-	q_in.close()
-	q_in.join_thread()
-
-	#Join the processes (wait for them to finish)
-	[p.join() for p in proc]
-	
-
-	#Read results
-	res=[]
-	while not q_out.empty():
-		res = res+[q_out.get()]
-
-	#Close out queue
-	q_out.close()
-	q_out.join_thread()
-
-	#Return results ordered
-	return [x for i, x in sorted(res)]
-
-def parmap2(f, X, nprocs=None):
-	"""
-	Typical use:
-	inputs = [(a, ) for a in aa]
-	results = parmap(f, inputs)
-	where f(a) for instance.
-	"""
-
-	import multiprocessing as mp
-
-	if nprocs is None:
-		nprocs = mp.cpu_count()
-
-	q_in = mp.Queue(1)
-	q_out = mp.Queue()
-
-	proc = [mp.Process(target=fun, args=(f, q_in, q_out))
-			for _ in range(nprocs)]
-	for p in proc:
-		p.daemon = True
-		p.start()
-
-	sent = [q_in.put((i, x)) for i, x in enumerate(X)]
-	[q_in.put((None, None)) for _ in range(nprocs)]
-	res = [q_out.get() for _ in range(len(sent))]
-
-	[p.join() for p in proc]
-
-	return [x for i, x in sorted(res)]
 
 def spread_integer(n, n_cap):
 	X = []
@@ -1525,14 +1448,16 @@ def mysql_server(engine=None, hostname=None, port=None, username=None, password=
 	if engine is None:
 		kill_engine = True
 		if ssh_tunnel is None and ssh_parameters is None:
-			engine = create_engine('mysql+' + connector + '://' + username + ':' + password + '@' + hostname + '/' + database)
+			str_engine = 'mysql+' + connector + '://' + username + ':' + password + '@' + hostname + '/' + database
+			engine = create_engine(str_engine)
 		else:
 			if ssh_tunnel is None:
-				ssh_tunnel = ssh_tunnel_connection(ssh_parameters,hostname,port,allow_agent,debug_level)
-				engine = create_engine('mysql+' + connector + '://' + username + ':' + password + '@127.0.0.1:%s/' % ssh_tunnel.local_bind_port + database)
+				ssh_tunnel = ssh_tunnel_connection(ssh_parameters, hostname, port, allow_agent, debug_level)
+				str_engine = 'mysql+' + connector + '://' + username + ':' + password + '@127.0.0.1:%s/' % ssh_tunnel.local_bind_port + database
+				engine = create_engine(str_engine)
 
 	try:
-		yield {'engine':engine, 'ssh_tunnel':ssh_tunnel}
+		yield {'engine':engine, 'ssh_tunnel':ssh_tunnel, 'str_engine':str_engine}
 	finally:
 		if kill_engine:
 			engine.dispose()
@@ -1602,13 +1527,16 @@ def build_step_multi_valued_function(df, name_min_col='delay_min_minutes', name_
 	
 	return f
 
-def build_step_bivariate_function(df,name_min_col1='flight_type_distance_gcd_km_min',
-									name_min_col2='delay_min_minutes',
-									value_column='compensation',
-									add_lower_bound1=None, add_upper_bound1=None,
-									value_lower_bound1=0., value_upper_bound1=99999.,
-									add_lower_bound2=None, add_upper_bound2=None,
-									value_lower_bound2=0., value_upper_bound2=99999.):
+def build_step_bivariate_function(df,
+	name_min_col1='flight_type_distance_gcd_km_min',
+	name_max_col1='flight_type_distance_gcd_km_max',
+	name_min_col2='delay_min_minutes',
+	name_max_col2='delay_max_minutes',
+	value_column='compensation',
+	add_lower_bound1=None, add_upper_bound1=None,
+	value_lower_bound1=0., value_upper_bound1=99999.,
+	add_lower_bound2=None, add_upper_bound2=None,
+	value_lower_bound2=0., value_upper_bound2=99999.):
 
 	if value_lower_bound1>value_upper_bound1:
 		value_upper_bound1 = value_lower_bound1 
@@ -1623,7 +1551,6 @@ def build_step_bivariate_function(df,name_min_col1='flight_type_distance_gcd_km_
 		
 	for v1 in mins1:
 		values[v1] = OrderedDict()
-
 		mins2 = sorted(list(set(df[name_min_col2])))
 		if not add_lower_bound2 is None:
 			mins2 = [add_lower_bound2] + mins2
@@ -1819,12 +1746,14 @@ def compute_percentile_with_weight(df, by=None, weight=None, cols=None):
 			d[k][col] = stuff.quantiles()[0][1]
 
 	dg = pd.DataFrame(d).T
-
+	#dg.index.set_names(tuple(by))
 	return dg
 
 def weight_avg(df, by=None, weight=None, stats=['mean']):
 	dfs = {}
-	df = df.select_dtypes(include='number')
+	dfff = df.select_dtypes(include='number')
+	dffg =  df[[col for col in df.columns if (col in by) and (not col in dfff.columns)]]
+	df = pd.concat([dfff, dffg], axis=1)
 	if type(by)==list:
 		pp = [weight] + by
 	else:
@@ -1866,3 +1795,128 @@ def weight_avg(df, by=None, weight=None, stats=['mean']):
 			print ('Ignoring unknown', stat, 'statistics')
 		
 	return pd.concat(dfs).unstack(level=0)
+
+def strip_string(s, to_strip):
+	# TODO: same for prefix 
+	# Note: with python 3.9, use removesuffix/removeprefix
+	if s.endswith(to_strip):
+		return s[:-len(to_strip)]
+	else:
+		return s
+
+def get_first_matching_element(iterable, default = None, condition = lambda x: True):
+	"""
+	Returns the first item in the `iterable` that
+	satisfies the `condition`.
+
+	If the condition is not given, returns the first item of
+	the iterable.
+
+	If the `default` argument is given and the iterable is empty,
+	or if it has no items matching the condition, the `default` argument
+	is returned if it matches the condition.
+
+	The `default` argument being None is the same as it not being given.
+
+	Raises `StopIteration` if no item satisfying the condition is found
+	and default is not given or doesn't satisfy the condition.
+
+	>>> first( (1,2,3), condition=lambda x: x % 2 == 0)
+	2
+	>>> first(range(3, 100))
+	3
+	>>> first( () )
+	Traceback (most recent call last):
+	...
+	StopIteration
+	>>> first([], default=1)
+	1
+	>>> first([], default=1, condition=lambda x: x % 2 == 0)
+	Traceback (most recent call last):
+	...
+	StopIteration
+	>>> first([1,3,5], default=1, condition=lambda x: x % 2 == 0)
+	Traceback (most recent call last):
+	...
+	StopIteration
+	"""
+
+	try:
+		return next(x for x in iterable if condition(x))
+	except StopIteration:
+		if default is not None:# and condition(default):
+			return default
+		else:
+			raise
+
+def set_interval(x, intervals=None):
+	"""
+	Designed to work with the df apply function.
+	Finds where the value x lies in the intervals.
+	"""
+	return get_first_matching_element(intervals, default=np.nan, condition=lambda y: y>=x)
+
+def groupby_on_quantiles(df, col, qs=np.arange(0.1, 1.1, 0.1), mets=['mean', 'sem']):
+	"""
+	Averages a df on the quantile of the columns col
+	"""
+	set_q = lambda x: set_interval(x, intervals=df[col].quantile(qs))
+
+	df['{}_q'.format(col)] = df[col].apply(set_q)
+
+	return df.groupby('{}_q'.format(col))
+
+def average_on_quantiles(df, col, qs=np.arange(0.1, 1.1, 0.1)):
+
+	return groupby_on_quantiles(df, col, qs=qs).agg(mets)
+
+def groupby_on_intervals(df, col, intervals=[]):
+	"""
+	Averages a df on the quantile of the columns col
+	"""
+	set_i = lambda x: set_interval(x, intervals=intervals)
+
+	df['{}_interval'.format(col)] = df[col].apply(set_i)
+
+	return df.groupby('{}_interval'.format(col))
+
+def average_on_intervals(df, col, intervals=[], mets=['mean', 'sem']):
+
+	return groupby_on_intervals(df, col, intervals=intervals).agg(mets)
+
+def groupby_on_downsampled_interval(df, col, n=10):
+	"""
+	"""
+
+	intervals = linspace(df[col].min(), df[col].max(), n)
+
+	return groupby_on_intervals(df, col, intervals=intervals)
+
+def average_on_downsampled_interval(df, col, n=10, mets=['mean', 'sem']):
+	"""
+	"""
+
+	return groupby_on_downsampled_interval(df, col, n=n).agg(mets)
+
+def gini(x, w=None):
+	"""
+	Very fast. From https://stackoverflow.com/questions/48999542/more-efficient-weighted-gini-coefficient-in-python
+	"""
+	# The rest of the code requires numpy arrays.
+	x = np.asarray(x)
+	if w is not None:
+		w = np.asarray(w)
+		sorted_indices = np.argsort(x)
+		sorted_x = x[sorted_indices]
+		sorted_w = w[sorted_indices]
+		# Force float dtype to avoid overflows
+		cumw = np.cumsum(sorted_w, dtype=float)
+		cumxw = np.cumsum(sorted_x * sorted_w, dtype=float)
+		return (np.sum(cumxw[1:] * cumw[:-1] - cumxw[:-1] * cumw[1:]) / 
+				(cumxw[-1] * cumw[-1]))
+	else:
+		sorted_x = np.sort(x)
+		n = len(x)
+		cumx = np.cumsum(sorted_x, dtype=float)
+		# The above formula, with all weights equal to 1 simplifies to:
+		return (n + 1 - 2 * np.sum(cumx) / cumx[-1]) / n

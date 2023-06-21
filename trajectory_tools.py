@@ -48,7 +48,8 @@ def create_vertical_trajectory(n=30, loc_climb=7, dalt_cruise=2., p_change_alt_c
 			t += dt
 		traj.append((alt, d, t))
 	
-	return np.array(traj)
+	traj = pd.DataFrame(traj, columns=['alt', 'd', 't'])
+	return traj
 
 def compute_ab(x, y, n_p=5, n_o=0, slopes=False):
 	ab = []

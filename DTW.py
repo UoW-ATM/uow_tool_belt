@@ -6,7 +6,7 @@ import numpy as np
 Implementation of Dynamic Time Warping
 """
 
-def dtw((a,b),f=dist,D_full=False): 
+def dtw(st, f=None, D_full=False): 
     """
     Given the function dist, compute the matrice distance of two sequences.
     
@@ -17,6 +17,7 @@ def dtw((a,b),f=dist,D_full=False):
     output:
         Matrix of distances or last value
     """
+    a, b = st
     a=np.array(a)
     b=np.array(b)
     N=len(a)
@@ -37,7 +38,7 @@ def dtw((a,b),f=dist,D_full=False):
     else:
         return D
 
-def dtw_path((a,b), D):
+def dtw_path(st, D):
     """
     Given distance matrix, compute the best match between objects of the list.
     input:
@@ -47,6 +48,7 @@ def dtw_path((a,b), D):
         list of tuples, each of them a couple of index realted to the lists a an b.
     
     """
+    a, b = st
     a=np.array(a)
     b=np.array(b)
     N=len(a)
