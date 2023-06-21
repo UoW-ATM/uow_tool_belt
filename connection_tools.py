@@ -1,9 +1,9 @@
 import os
 from os.path import join as jn
-import pandas as pd
 from contextlib import contextmanager
-import pickle
+
 import numpy as np
+import pandas as pd
 
 from .general_tools import mysql_server, ssh_client_connection, yes
 
@@ -41,6 +41,9 @@ def extract_ssh_parameters(profile):
 	return kwargs
 
 def read_cred(profile, path_profile=None):
+	from importlib.machinery import SourceFileLoader
+	from pathlib import Path
+
 	name = profile + '_credentials'
 	if path_profile	is None:
 		path_profile = Path(__file__).parents[2]
@@ -327,6 +330,7 @@ def read_pickle(file_name='', path='', connection=None, profile=None, byte=True,
 	"""
 	"""
 	from pathlib import Path
+	import pickle
 
 	if byte:
 		mode = 'rb'
@@ -519,7 +523,7 @@ def write_pickle(data=None, file_name='',  path='', connection=None, profile=Non
 	how='replace', create_folder=True, byte=True, **other_paras):
 
 	from pathlib import Path
-
+	import pickle
 
 	if how!='replace':
 		print ('You chose to save in pickle with mode', how)
@@ -611,6 +615,8 @@ def write_mysql(data=None, table_name=None, how='update', key_for_update='id',
 	TODO: harmonise keys_for_update and key_for_update
 	
 	"""
+
+	import sqlalchemy
 
 	with mysql_connection(connection=connection, profile=profile) as connection:
 		engine = connection['engine']

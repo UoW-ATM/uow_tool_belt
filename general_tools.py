@@ -1,55 +1,29 @@
+"""
+IMPORTANT RULE. All imports in this file (and the others) should be done inside the functions, in order to avoid
+bloated requirements files in codes using this library. The only exceptions are:
+- built-in modules: sys, os, contextlib, collections etc.
+- numpy, pandas, scipy, matplotlib
+"""
+
 import sys
 import contextlib
 import os
-import datetime as dt
+import string
+from collections import OrderedDict
+from itertools import repeat
 
-from scipy.optimize import minimize_scalar, curve_fit
-import statsmodels.distributions.empirical_distribution as edf
-from scipy.interpolate import interp1d
-from scipy.signal import argrelextrema
-from scipy.stats import pearsonr
-from scipy.special import erfinv
+import pandas as pd
 
-# TODO: sanitise numpy import
-from numpy import *
 import numpy as np
 from numpy.random import randint, choice
 from numpy.linalg import norm
 
-import networkx as nx
-import imp
-import matplotlib.pyplot as plt
-import matplotlib.colors as mcolors
-#from mpl_toolkits.basemap import Basemap
-from paramiko import SSHClient
-from scp import SCPClient
-import string
-import multiprocessing as mp
-from contextlib import contextmanager
-from sshtunnel import SSHTunnelForwarder, open_tunnel
-from sqlalchemy import create_engine
-from itertools import permutations, islice
-from math import radians, cos, sin, asin, sqrt, atan2
-import pandas as pd
-from mpmath import polyroots
-from collections import OrderedDict
-import pickle
-from livestats import livestats
-from termcolor import colored
+from scipy.interpolate import interp1d
+from scipy.signal import argrelextrema
+from scipy.stats import pearsonr, spearmanr
+from scipy.special import erfinv
+from scipy.optimize import minimize_scalar
 
-
-R = 6373
-
-"""
-MYLIB VERSION
-Still building... python 3 version of my previous general_tools module.
-"""
-
-legend_location={'ur':1, 'ul':2, 'll':3, 'lr':4, 'r':5, 'cl':6, 'cr':7, 'lc':8, 'uc':9, 'c':10}
-
-#my_conv = { FIELD_TYPE.LONG: int, FIELD_TYPE.FLOAT: float, FIELD_TYPE.DOUBLE: float }
-
-_colors=('Blue','BlueViolet','Brown','CadetBlue','Crimson','DarkMagenta','DarkRed','DeepPink','Gold','Green','OrangeRed')
 
 def hex_to_rgb(value):
 	value = value.lstrip('#')
@@ -57,8 +31,17 @@ def hex_to_rgb(value):
 	rgb_255 = tuple(int(value[i:i+lv//3], 16) for i in range(0, lv, lv//3))
 	return tuple(a/255. for a in rgb_255)
 
+R = 6373 # approximate Earth's radius
+
+legend_location={'ur':1, 'ul':2, 'll':3, 'lr':4, 'r':5, 'cl':6, 'cr':7, 'lc':8, 'uc':9, 'c':10}
+
+#my_conv = { FIELD_TYPE.LONG: int, FIELD_TYPE.FLOAT: float, FIELD_TYPE.DOUBLE: float }
+
+_colors=('Blue','BlueViolet','Brown','CadetBlue','Crimson','DarkMagenta','DarkRed','DeepPink','Gold','Green','OrangeRed')
+
 nice_colors = ['#348ABD',  '#7A68A6',  '#A60628',  '#467821',  '#CF4457',  '#188487',  '#E24A33']
 nice_colors = [hex_to_rgb(v) for v in nice_colors]
+
 
 def build_col_print_func(colour, verbose=True, **add_kwargs):
 	from termcolor import colored
@@ -75,6 +58,7 @@ def build_col_print_func(colour, verbose=True, **add_kwargs):
 			print (*args, **kwargs)
 		
 	return my_print
+
 
 alert_print = build_col_print_func('red') # | grep '^[\[31m' --> Ctr-V ESC --> one or another '^[\[32m\|^[\[37m'
 # aoc_print = build_col_print_func('green', verbose=verbose) # | grep '^[\[32m'
@@ -94,10 +78,10 @@ def percentile_custom(n):
 
 # This is usable with multiprocessing
 def percentile_90(x):
-	return percentile(x, 90)
+	return np.percentile(x, 90)
 
 def percentile_10(x):
-	return percentile(x, 10)
+	return np.percentile(x, 10)
 
 def inverted_edf(x):
 	"""
@@ -113,7 +97,6 @@ def inverted_edf(x):
 	x=[34, 21, 113, 153, 421, 235, 134, 21, 1, 43, 1234, 52, 235]
 	iedf_x=inverted_edf(x)
 	"""
-	from scipy.interpolate import interp1d
 	import statsmodels.distributions.empirical_distribution as edf
 
 	if len(set(x))>1:
@@ -144,15 +127,14 @@ def haversine_old(lon1, lat1, lon2, lat2):
 	------
 	Distance between points in km
 	"""
-	from math import radians, cos, sin, sqrt, atan2
 
 	# convert decimal degrees to radians 
-	lon1, lat1, lon2, lat2 = map(radians, [lon1, lat1, lon2, lat2])
+	lon1, lat1, lon2, lat2 = map(np.radians, [lon1, lat1, lon2, lat2])
 	# haversine formula 
 	dlon = lon2 - lon1 
 	dlat = lat2 - lat1 
-	a = sin(dlat/2)**2 + cos(lat1) * cos(lat2) * sin(dlon/2)**2
-	c= 2 * atan2(sqrt(a), sqrt(1-a))
+	a = np.sin(dlat/2)**2 + np.cos(lat1) * np.cos(lat2) * np.sin(dlon/2)**2
+	c= 2 * np.atan2(np.sqrt(a), np.sqrt(1-a))
 	km = R * c
 	return km
 
@@ -170,39 +152,35 @@ def haversine(lon1, lat1, lon2, lat2):
 	------
 	Distance between points in km
 	"""
-	from math import radians, cos, sin, sqrt
-
 	# convert decimal degrees to radians 
-	lon1, lat1, lon2, lat2 = map(radians, [lon1, lat1, lon2, lat2])
+	lon1, lat1, lon2, lat2 = map(np.radians, [lon1, lat1, lon2, lat2])
 	# haversine formula 
 	dlon = lon2 - lon1 
 	dlat = lat2 - lat1
-	km = 2. * 6373. * np.arcsin(sqrt(sin(dlat/2.)**2 + cos(lat1) * cos(lat2) * sin(dlon/2.)**2))
+	km = 2. * 6373. * np.arcsin(np.sqrt(np.sin(dlat/2.)**2 + np.cos(lat1) * np.cos(lat2) * np.sin(dlon/2.)**2))
 	return km
 
 def distance_euclidean(pt1, pt2):
-	from numpy.linalg import norm
 	return norm(np.array(pt2)-np.array(pt1))
 
 def intermediate_point(lon1, lat1, lon2, lat2, fraction):
-	from math import radians, cos, sin, sqrt, atan2, pi
 
 	d = haversine(lon1, lat1, lon2, lat2)
 
 	# convert decimal degrees to radians 
-	lon1, lat1, lon2, lat2 = map(radians, [lon1, lat1, lon2, lat2])
+	lon1, lat1, lon2, lat2 = map(np.radians, [lon1, lat1, lon2, lat2])
 	ad = d / R #angular distance
 
-	a = sin((1-fraction)*ad) / sin(ad)
-	b = sin(fraction*ad) / sin(ad)
-	x = a * cos(lat1) * cos(lon1) + b * cos(lat2) * cos(lon2)
-	y = a * cos(lat1) * sin(lon1) + b * cos(lat2) * sin(lon2)
-	z = a * sin(lat1) + b * sin(lat2)
+	a = np.sin((1-fraction)*ad) / np.sin(ad)
+	b = np.sin(fraction*ad) / np.sin(ad)
+	x = a * np.cos(lat1) * np.cos(lon1) + b * np.cos(lat2) * np.cos(lon2)
+	y = a * np.cos(lat1) * np.sin(lon1) + b * np.cos(lat2) * np.sin(lon2)
+	z = a * np.sin(lat1) + b * np.sin(lat2)
 
-	lat = atan2(z, sqrt(x**2+y**2))
-	lon = atan2(y, x)
+	lat = np.atan2(z, np.sqrt(x**2+y**2))
+	lon = np.atan2(y, x)
 
-	return (lon*180/pi, lat*180/pi)
+	return (lon*180/np.pi, lat*180/np.pi)
 
 def proportional(v1,v2,p1,p2,p):
 	if p1==p2:
@@ -214,7 +192,6 @@ def proportional(v1,v2,p1,p2,p):
 
 def create_dir(name):
 	# TODO: modernise (see loading)
-	import os
 	if not os.path.exists(name):
 		os.makedirs(name)
 
@@ -238,7 +215,6 @@ def loading(func):   #decorator
 
 	TODO: modernise.
 	"""
-	import os
 	import pickle
 
 	def wrapper(*args, **kwargs):
@@ -299,7 +275,6 @@ class DummyFile:
 
 @contextlib.contextmanager
 def silence(silent=True):
-	import sys
 	if silent:
 		save_stdout = sys.stdout
 		sys.stdout = DummyFile()
@@ -363,7 +338,6 @@ def timeit(f, listt):
 	print ('Typical time of execution:', elapsed.total_seconds()/float(len(listt)))
 
 def counter(i, end, start=0, message=''):
-	import sys
 	sys.stdout.write('\r' + message + str(int(100*(abs(i-start)+1)/float(abs(end-start)))) + '%')
 	sys.stdout.flush() 
 	if i==end-1:
@@ -371,7 +345,6 @@ def counter(i, end, start=0, message=''):
 
 @contextlib.contextmanager
 def write_on_file(name_file=None):
-	import sys
 	if name_file!=None:
 		with open(name_file, 'w') as f:
 			save_stdout = sys.stdout
@@ -407,9 +380,6 @@ def yes(question):
 	return ans in ['Y','y','yes','Yes']
 
 def recursive_minimization(f, bounds, n=100, depth=0, max_depth=5, target=-1, tol=0.001):
-	from scipy.signal import argrelextrema
-	from scipy.optimize import minimize_scalar
-
 	x = np.arange(bounds[0], bounds[1], (bounds[1] - bounds[0])/float(n))
 	values = np.array([f(xx) for xx in x])
 
@@ -793,8 +763,6 @@ def bootstrap_test(sample1, sample2, k = 1000, p_value = 0.05, two_tailed = True
 
 	THIS IS PROBABLY USELESS, USE P-VALUE GIVEN BY pearsonr!
 	"""
-	from numpy.random import randint
-	from scipy.stats import pearsonr
 
 	# eliminate all entries which have a nan in one of the sample. 
 	sample1_bis, sample2_bis = zip(*[zz for zz in zip(sample1, sample2) if not pd.isnull(zz[0]) and not pd.isnull(zz[1])])
@@ -828,8 +796,6 @@ def bootstrap_mean_test(sample1, sample2, k=1000, p_value=0.05, two_tailed=True,
 	In other word, the difference is significant if False is returned.
 	"""
 
-	from numpy.random import choice
-
 	if not two_tailed:
 		raise Exception('One-tail test not implemented')
 	# Shift both distributions by the overall  mean
@@ -858,7 +824,6 @@ def permutation_test(sample1, sample2, k=1000, p_value=0.05, two_tailed=True, lo
 
 	If low_mem = True, computation will be slower (x2) but will use much less memory.
 	"""
-	from numpy.random import choice
 
 	if not two_tailed:
 		raise Exception('One-tailed test not implemented yet')
@@ -997,7 +962,6 @@ def _pre_compute_positions(G, color_nodes=nice_colors[1], first_col_map_node=nic
 		unit = 1.
 
 	def width_double(x, minn, maxx, min_final=0.5, max_final=2.):
-		#return scale*x/maxx#+0.02#0.2
 		return max_final*(x-minn)/(maxx-minn) + min_final
 
 	def width(x, maxx, scale=0.5):
@@ -1339,7 +1303,7 @@ def parallelize(f, args=None, kwargs=None, nprocs=None):
 	if args is None:
 		args = [()]*len(kwargs)
 
-	with Pool(max_workers=nprocs) as pool:
+	with mp.Pool(max_workers=nprocs) as pool:
 		results = starmap_with_kwargs(pool, f, args, kwargs)
 
 	return results
@@ -1529,9 +1493,7 @@ def build_step_multi_valued_function(df, name_min_col='delay_min_minutes', name_
 
 def build_step_bivariate_function(df,
 	name_min_col1='flight_type_distance_gcd_km_min',
-	name_max_col1='flight_type_distance_gcd_km_max',
 	name_min_col2='delay_min_minutes',
-	name_max_col2='delay_max_minutes',
 	value_column='compensation',
 	add_lower_bound1=None, add_upper_bound1=None,
 	value_lower_bound1=0., value_upper_bound1=99999.,
@@ -1611,9 +1573,6 @@ def scale_and_s_from_quantile_sigma_lognorm(q, m, sig_p):
 	"""
 	assumes loc = 0.
 	"""
-
-	from scipy.optimize import minimize_scalar
-	from scipy.special import erfinv
 
 	def build_f(sig_p, q, m):
 		def f(x):
@@ -1697,7 +1656,6 @@ def partial_corr(C, corr_type='pearson'):
 		P[i, j] contains the partial correlation of C[:, i] and C[:, j] controlling
 		for the remaining variables in C.
 	"""
-	from scipy.stats import pearsonr, spearmanr
 
 	if corr_type=='pearson':
 		corr_func = pearsonr
@@ -1866,7 +1824,7 @@ def groupby_on_quantiles(df, col, qs=np.arange(0.1, 1.1, 0.1), mets=['mean', 'se
 
 	return df.groupby('{}_q'.format(col))
 
-def average_on_quantiles(df, col, qs=np.arange(0.1, 1.1, 0.1)):
+def average_on_quantiles(df, col, qs=np.arange(0.1, 1.1, 0.1), mets=['mean', 'sem']):
 
 	return groupby_on_quantiles(df, col, qs=qs).agg(mets)
 
@@ -1888,7 +1846,7 @@ def groupby_on_downsampled_interval(df, col, n=10):
 	"""
 	"""
 
-	intervals = linspace(df[col].min(), df[col].max(), n)
+	intervals = np.linspace(df[col].min(), df[col].max(), n)
 
 	return groupby_on_intervals(df, col, intervals=intervals)
 

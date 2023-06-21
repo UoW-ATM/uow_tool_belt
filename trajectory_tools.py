@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
 
 # Simple vertical trajectory creation function
 def create_vertical_trajectory(n=30, loc_climb=7, dalt_cruise=2., p_change_alt_cruise=0.1,
@@ -90,7 +91,6 @@ def plot_traj(traj, toc=None, tod=None):
 	Simple plot of a vertical trajectory
 	and the tod/toc points.
 	"""
-	import matplotlib.pyplot as plt
 
 	fig, ax = plt.subplots()
 	ax.plot(traj['d'], traj['alt'])
