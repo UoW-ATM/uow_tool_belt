@@ -1,41 +1,7 @@
-import sys
 import contextlib
-import os
-import datetime as dt
-
-from scipy.optimize import minimize_scalar, curve_fit
-import statsmodels.distributions.empirical_distribution as edf
-from scipy.interpolate import interp1d
-from scipy.signal import argrelextrema
-from scipy.stats import pearsonr
-from scipy.special import erfinv
-
-# TODO: sanitise numpy import
-from numpy import *
-import numpy as np
-from numpy.random import randint, choice
-from numpy.linalg import norm
-
-import networkx as nx
-import imp
-import matplotlib.pyplot as plt
-import matplotlib.colors as mcolors
-#from mpl_toolkits.basemap import Basemap
-from paramiko import SSHClient
-from scp import SCPClient
-import string
-import multiprocessing as mp
-from contextlib import contextmanager
-from sshtunnel import SSHTunnelForwarder, open_tunnel
-from sqlalchemy import create_engine
-from itertools import permutations, islice
-from math import radians, cos, sin, asin, sqrt, atan2
-import pandas as pd
-from mpmath import polyroots
 from collections import OrderedDict
-import pickle
-from livestats import livestats
-from termcolor import colored
+import numpy as np
+import pandas as pd
 
 
 R = 6373
@@ -61,6 +27,7 @@ nice_colors = ['#348ABD',  '#7A68A6',  '#A60628',  '#467821',  '#CF4457',  '#188
 nice_colors = [hex_to_rgb(v) for v in nice_colors]
 
 def build_col_print_func(colour, verbose=True, **add_kwargs):
+	from termcolor import colored
 
 	def my_print(*args, **kwargs):
 		kwargs['flush']=False
@@ -70,7 +37,6 @@ def build_col_print_func(colour, verbose=True, **add_kwargs):
 			if not k in kwargs:
 				kwargs[k] = v
 
-		#kwargs['flush']=True
 		if verbose:
 			print (*args, **kwargs)
 		
@@ -88,7 +54,7 @@ alert_print = build_col_print_func('red') # | grep '^[\[31m' --> Ctr-V ESC --> o
 
 def percentile_custom(n):
 	def percentile_(x):
-		return percentile(x, n)
+		return np.percentile(x, n)
 	percentile_.__name__ = 'percentile_%s' % n
 	return percentile_
 
@@ -106,6 +72,9 @@ def inverted_edf(x):
 	x=[34, 21, 113, 153, 421, 235, 134, 21, 1, 43, 1234, 52, 235]
 	iedf_x=inverted_edf(x)
 	"""
+	from scipy.interpolate import interp1d
+	import statsmodels.distributions.empirical_distribution as edf
+
 	if len(set(x))>1:
 		x_edf = edf.ECDF(x)
 		
@@ -134,13 +103,14 @@ def haversine_old(lon1, lat1, lon2, lat2):
 	------
 	Distance between points in km
 	"""
+	from math import radians, cos, sin, sqrt, atan2
+
 	# convert decimal degrees to radians 
 	lon1, lat1, lon2, lat2 = map(radians, [lon1, lat1, lon2, lat2])
 	# haversine formula 
 	dlon = lon2 - lon1 
 	dlat = lat2 - lat1 
 	a = sin(dlat/2)**2 + cos(lat1) * cos(lat2) * sin(dlon/2)**2
-	#c = 2 * asin(sqrt(a)) 
 	c= 2 * atan2(sqrt(a), sqrt(1-a))
 	km = R * c
 	return km
@@ -159,22 +129,23 @@ def haversine(lon1, lat1, lon2, lat2):
 	------
 	Distance between points in km
 	"""
+	from math import radians, cos, sin, sqrt
+
 	# convert decimal degrees to radians 
 	lon1, lat1, lon2, lat2 = map(radians, [lon1, lat1, lon2, lat2])
 	# haversine formula 
 	dlon = lon2 - lon1 
-	dlat = lat2 - lat1 
-	#a = sin(dlat/2)**2 + cos(lat1) * cos(lat2) * sin(dlon/2)**2
-	#c = 2 * asin(sqrt(a)) 
-	#c = 2 * atan2(sqrt(a), sqrt(1-a))
-	#km = 6373. * c
-	km = 2. * 6373. * arcsin(sqrt(sin(dlat/2.)**2 + cos(lat1) * cos(lat2) * sin(dlon/2.)**2)) 
+	dlat = lat2 - lat1
+	km = 2. * 6373. * np.arcsin(sqrt(sin(dlat/2.)**2 + cos(lat1) * cos(lat2) * sin(dlon/2.)**2))
 	return km
 
 def distance_euclidean(pt1, pt2):
-	return norm(array(pt2)-array(pt1))
+	from numpy.linalg import norm
+	return norm(np.array(pt2)-np.array(pt1))
 
 def intermetidate_point(lon1, lat1, lon2, lat2, fraction):
+	from math import radians, cos, sin, sqrt, atan2, pi
+
 	d = haversine(lon1, lat1, lon2, lat2)
 
 	# convert decimal degrees to radians 
@@ -190,7 +161,7 @@ def intermetidate_point(lon1, lat1, lon2, lat2, fraction):
 	lat = atan2(z, sqrt(x**2+y**2))
 	lon = atan2(y, x)
 
-	return (lon*180/math.pi, lat*180/math.pi)
+	return (lon*180/pi, lat*180/pi)
 
 def proportional(v1,v2,p1,p2,p):
 	if p1==p2:
@@ -202,6 +173,7 @@ def proportional(v1,v2,p1,p2,p):
 
 def create_dir(name):
 	# TODO: modernise (see loading)
+	import os
 	if not os.path.exists(name):
 		os.makedirs(name)
 
@@ -225,6 +197,9 @@ def loading(func):   #decorator
 
 	TODO: modernise.
 	"""
+	import os
+	import pickle
+
 	def wrapper(*args, **kwargs):
 		if 'path' in kwargs.keys():
 			if type(kwargs['path'])==type('p'):
@@ -283,6 +258,7 @@ class DummyFile:
 
 @contextlib.contextmanager
 def silence(silent):
+	import sys
 	if silent:
 		save_stdout = sys.stdout
 		sys.stdout = DummyFile()
@@ -299,6 +275,8 @@ def clock_time(message_before='',
 	message_after='executed in', print_function=print,
 	oneline=False):
 
+	import datetime as dt
+
 	if oneline:
 		print_function(message_before, end="\r")
 	else:
@@ -314,8 +292,10 @@ def clock_time(message_before='',
 		
 	print_function (message)
 
-@contextmanager
+@contextlib.contextmanager
 def keep_time(obj, key=None):
+	import datetime as dt
+
 	# Used to attach to an object some computation time
 	start = dt.datetime.now()
 	yield
@@ -324,12 +304,15 @@ def keep_time(obj, key=None):
 	obj.times[key] = obj.times.get(key, dt.timedelta(0.)) + elapsed
 
 def timeit(f, listt):
+	import datetime as dt
+
 	start = dt.datetime.now()
 	[f(l) for l in listt]
 	elapsed = dt.datetime.now() - start
 	print ('Typical time of execution:', elapsed.total_seconds()/float(len(listt)))
 
 def counter(i, end, start=0, message=''):
+	import sys
 	sys.stdout.write('\r' + message + str(int(100*(abs(i-start)+1)/float(abs(end-start)))) + '%')
 	sys.stdout.flush() 
 	if i==end-1:
@@ -337,6 +320,7 @@ def counter(i, end, start=0, message=''):
 
 @contextlib.contextmanager
 def write_on_file(name_file):
+	import sys
 	if name_file!=None:
 		with open(name_file, 'w') as f:
 			save_stdout = sys.stdout
@@ -369,31 +353,27 @@ def yes(question):
 	return ans in ['Y','y','yes','Yes']
 
 def recursive_minimization(f, bounds, n=100, depth=0, max_depth=5, target=-1, tol=0.001):
-	#print ('Depth=', depth)
-	x = arange(bounds[0], bounds[1], (bounds[1] - bounds[0])/float(n))
-	values = array([f(xx) for xx in x])
-	# print ('bounds', bounds)
-	# print ('values', values)
-	possible_minima_idx = argrelextrema(values, less, mode = 'wrap')[0]
-	#print ('possible minima', [x[i] for i in possible_minima_idx])
+	from scipy.signal import argrelextrema
+	from scipy.optimize import minimize_scalar
+
+	x = np.arange(bounds[0], bounds[1], (bounds[1] - bounds[0])/float(n))
+	values = np.array([f(xx) for xx in x])
+
+	possible_minima_idx = argrelextrema(values, np.less, mode = 'wrap')[0]
+
 	r_mins = [(x[max(0, i-2)] + bounds[0])/2. for i in possible_minima_idx]
 	r_maxs = [(x[min(i+2, len(values)-1)] + bounds[1])/2. for i in possible_minima_idx]
 	r_inits = [x[i] for i in possible_minima_idx]
 	i = 0
 	res = {'message':'No solution found.'}
 	while i<len(r_mins) and res['message'] == 'No solution found.':
-		#print ('i=', i)
 		if f(r_mins[i])<f(r_inits[i])<f(r_maxs[i]):
-			res = minimize_scalar(f, tol = tol, bracket = [r_mins[i], r_inits[i], r_maxs[i]])#, bounds=(10**(-8.), 1.))
+			res = minimize_scalar(f, tol = tol, bracket = [r_mins[i], r_inits[i], r_maxs[i]])
 		else:
 			res = minimize_scalar(f, tol = tol, bracket = [r_mins[i], r_maxs[i]])
-		#res = minimize_scalar(f, tol = 0.000001, bracket = [r_mins[i], r_inits[i], r_maxs[i]])#, bounds=(10**(-8.), 1.))
-		#print (res)
-		#print ((res['fun'],target),tol)
+
 		if (res['fun']-target)<tol:
 			res['message'] = 'Solution found.'
-			#print ('FOUND')
-			#return res
 		else:
 			if depth<max_depth:
 				res = recursive_minimization(f, (r_mins[i], r_inits[i], r_maxs[i]), depth = depth +1, target = target, tol = tol)
@@ -401,8 +381,6 @@ def recursive_minimization(f, bounds, n=100, depth=0, max_depth=5, target=-1, to
 				res = {'message':'No solution found.'}
 
 		i+=1
-
-		#if res['message'] == 'No solution found.'
 
 	return res
 
@@ -424,19 +402,17 @@ def loop(a, level, parass, ret={}, thing_to_do=None, **args):
 	"""
 
 	if level==[]:
-		return thing_to_do(**args)#(paras, G)
-		# return thing_to_do(**parass)#(paras, G)
+		return thing_to_do(**args)
 	else:
 		assert level[0] in a.keys()
 		for i in a[level[0]]:
 			print (level[0], '=', i)
-			#parass.update(level[0], i)
+
 			if not level[0] in parass.keys():
 				raise Exception('Trying to update a key that does not exist.')
 
 			parass.update({level[0]:i})
-			
-			#print (parass['sb']['r_div'], parass['firms']['r_s'])
+
 			ret[i] = loop(a, level[1:], parass, ret={}, thing_to_do=thing_to_do, **args)
 
 	return ret
@@ -498,9 +474,9 @@ def center_spatial_network(G, center=(0., 0.), key_coords='coords'):
 	min_x, max_x = min(coin), max(coin)
 	min_y, max_y = min(pouet), max(pouet)
 
-	current_center = array((min_x+max_x)/2., (min_y+max_y)/2.)
+	current_center = np.array((min_x+max_x)/2., (min_y+max_y)/2.)
 
-	shiftx, shifty = array(center) - current_center
+	shiftx, shifty = np.array(center) - current_center
 
 	return shift_spatial_network(G, shiftx=shiftx, shifty=shifty, key_coords=key_coords)
 
@@ -522,26 +498,26 @@ def build_triangular(N, side=1., eps=10e-6):
 		G: Networkx Graph.
 
 	"""
-	
+	import networkx as nx
 	
 	G = nx.Graph()   
 	a = side/float(N+0.5) - eps
 	n = 0
 	j = 0
-	while j*sqrt(3.)*a <= side:
+	while j*np.sqrt(3.)*a <= side:
 		i=0
 		while i*a <= side:
-			G.add_node(n, coords=[i*a, j*sqrt(3.)*a]) #LUCA: node capacity added.
+			G.add_node(n, coords=[i*a, j*np.sqrt(3.)*a]) #LUCA: node capacity added.
 			n+=1
-			if i*a + a/2 < side and  j*sqrt(3.)*a + (sqrt(3.)/2.)*a < side:
-				G.add_node(n, coords=[i*a + a/2., j*sqrt(3.)*a + (sqrt(3.)/2.)*a]) #LUCA: node capacity added.
+			if i*a + a/2 < side and  j*np.sqrt(3.)*a + (np.sqrt(3.)/2.)*a < side:
+				G.add_node(n, coords=[i*a + a/2., j*np.sqrt(3.)*a + (np.sqrt(3.)/2.)*a]) #LUCA: node capacity added.
 				n+=1
 			i+=1
 		j+=1
 			
 	for n in G.nodes():
 		for m in G.nodes():
-			if n!=m and abs(sqrt((G.node[n]['coords'][0] - G.node[m]['coords'][0])**2\
+			if n!=m and abs(np.sqrt((G.node[n]['coords'][0] - G.node[m]['coords'][0])**2\
 			+ (G.node[n]['coords'][1]- G.node[m]['coords'][1])**2) - a) <eps:
 				G.add_edge(n,m)
 	print(len(G.nodes()))
@@ -621,22 +597,22 @@ class Paras(dict):
 				if arg not in self.levels.keys():
 					self.levels[arg] = i
 
-def read_paras(paras_file=None, post_process=None):
-	"""
-	Reads parameter file for a single simulation.    
-	"""
-
-	if paras_file is None:
-		import my_paras as paras_mod
-	else:
-		paras_mod = imp.load_source("paras", paras_file)
-
-	paras = paras_mod.paras
-
-	if post_process!=None:
-		paras = post_process_paras(paras)
-
-	return paras
+# def read_paras(paras_file=None, post_process=None):
+# 	"""
+# 	Reads parameter file for a single simulation.
+# 	"""
+# 	import imp
+# 	if paras_file is None:
+# 		import my_paras as paras_mod
+# 	else:
+# 		paras_mod = imp.load_source("paras", paras_file)
+#
+# 	paras = paras_mod.paras
+#
+# 	if post_process!=None:
+# 		paras = post_process_paras(paras)
+#
+# 	return paras
 
 def sort_lists(list1, list2, remove_nan=False):
 	"""
@@ -647,8 +623,8 @@ def sort_lists(list1, list2, remove_nan=False):
 	return zip(*sorted(zip(list1, list2), key = lambda pair: pair[0]))
 
 def remove_nan_coupled_lists(list1, list2):
-	list1 = array(list1)
-	list2 = array(list2)
+	list1 = np.array(list1)
+	list2 = np.array(list2)
 	mask = ~pd.isnull(list1) & ~pd.isnull(list2)
 	list1 = list1[mask]
 	list2 = list2[mask]
@@ -656,7 +632,7 @@ def remove_nan_coupled_lists(list1, list2):
 	return list1, list2
 
 def fit(x, y, first_point=0, last_point=-1, f_fit=None,
-		p0=None, bounds=(-inf, inf)):
+		p0=None, bounds=(-np.inf, np.inf)):
 	"""
 	Simple function for linear fit.
 
@@ -701,12 +677,14 @@ def fit(x, y, first_point=0, last_point=-1, f_fit=None,
 	plot(x_cont, vectorize(f_fit_opt)(x_cont))
 	
 	"""
+	from scipy.optimize import curve_fit
+
 	if f_fit is None:
 		def f_fit(x, a, b):
 			return a + b*x
 
 	x, y = sort_lists(x, y, remove_nan=True)
-	x, y = array(x), array(y)
+	x, y = np.array(x), np.array(y)
 
 	popt, pcov = curve_fit(f_fit,
 							x[first_point:last_point],
@@ -762,29 +740,30 @@ def bootstrap_test(sample1, sample2, k = 1000, p_value = 0.05, two_tailed = True
 
 	THIS IS PROBABLY USELESS, USE P-VALUE GIVEN BY pearsonr!
 	"""
+	from numpy.random import randint
+	from scipy.stats import pearsonr
+
 	# eliminate all entries which have a nan in one of the sample. 
 	sample1_bis, sample2_bis = zip(*[zz for zz in zip(sample1, sample2) if not pd.isnull(zz[0]) and not pd.isnull(zz[1])])
 	r_sample = pearsonr(sample1_bis, sample2_bis)[0]
 
-	sample1_bis = array(sample1_bis)
-	sample2_bis = array(sample2_bis)
+	sample1_bis = np.array(sample1_bis)
+	sample2_bis = np.array(sample2_bis)
 	
 	n = len(sample1_bis)
 	try:
 		assert n == len(sample2_bis)
-	except AssertationError:
+	except AssertionError:
 		raise Exception("Samples must have same sizes.")
 
-	r_resample = zeros(k)
+	r_resample = np.zeros(k)
 	for i in range(k):
 		s1_rand = sample1_bis[randint(0, n, n)] # Resampling with the same size
 		s2_rand = sample2_bis[randint(0, n, n)] 
 		s1_rand_bis, s2_rand_bis = zip(*[zz for zz in zip(s1_rand, s2_rand) if not pd.isnull(zz[0]) and not pd.isnull(zz[1])])
 		r_resample[i] = pearsonr(s1_rand_bis, s2_rand_bis)[0]
 		
-	ci = percentile(r_resample, [100.*p_value/2., 100.*(1.-p_value/2.)])
-	
-	#print ("Percentiles:"), ci
+	ci = np.percentile(r_resample, [100.*p_value/2., 100.*(1.-p_value/2.)])
 	
 	return  ci[0]<r_sample<ci[1], ci
 
@@ -796,22 +775,24 @@ def bootstrap_mean_test(sample1, sample2, k=1000, p_value=0.05, two_tailed=True,
 	In other word, the difference is significant if False is returned.
 	"""
 
+	from numpy.random import choice
+
 	if not two_tailed:
 		raise Exception('One-tail test not implemented')
 	# Shift both distributions by the overall  mean
-	mean_total = array(list(sample1) + list(sample2)).mean()
-	sample1_shifted = array(sample1) - mean_total + array(sample1).mean()
-	sample2_shifted = array(sample2) - mean_total + array(sample2).mean()
+	mean_total = np.array(list(sample1) + list(sample2)).mean()
+	sample1_shifted = np.array(sample1) - mean_total + np.array(sample1).mean()
+	sample2_shifted = np.array(sample2) - mean_total + np.array(sample2).mean()
 
 	# Draw some means from shifted samples, with replacement	
-	resampled_means1 = array([choice(sample1_shifted, size=len(sample1), replace=replace).mean() for i in range(k)])
-	resampled_means2 = array([choice(sample2_shifted, size=len(sample2), replace=replace).mean() for i in range(k)])
+	resampled_means1 = np.array([choice(sample1_shifted, size=len(sample1), replace=replace).mean() for i in range(k)])
+	resampled_means2 = np.array([choice(sample2_shifted, size=len(sample2), replace=replace).mean() for i in range(k)])
 
 	# Compare the resampled means with the empirical mean
 	diff_mean_resampled = resampled_means1 - resampled_means2
-	diff_mean_empirical = array(sample1).mean() - array(sample2).mean()
+	diff_mean_empirical = np.array(sample1).mean() - np.array(sample2).mean()
 
-	ci = percentile(diff_mean_resampled, [100.*p_value/2., 100.*(1.-p_value/2.)])
+	ci = np.percentile(diff_mean_resampled, [100.*p_value/2., 100.*(1.-p_value/2.)])
 
 	return ci[0]<diff_mean_empirical<ci[1], ci
 
@@ -822,12 +803,14 @@ def permutation_test(sample1, sample2, k=1000, p_value=0.05, two_tailed=True, lo
 	Remember: if True, the difference is NOT significant (the two means are from
 	the same distribution with confidence > 1-p_value).
 
-	If low_mem = True, computation will be slower (x2) but will used much less memory.
+	If low_mem = True, computation will be slower (x2) but will use much less memory.
 	"""
+	from numpy.random import choice
+
 	if not two_tailed:
 		raise Exception('One-tailed test not implemented yet')
 
-	diff = array(sample1) - array(sample2)
+	diff = np.array(sample1) - np.array(sample2)
 	diff_mean_empirical = diff.mean()
 	
 	if not low_mem:
@@ -836,7 +819,7 @@ def permutation_test(sample1, sample2, k=1000, p_value=0.05, two_tailed=True, lo
 		diff_resampled = draw * diff
 		dist_mean = diff_resampled.mean(axis=1)
 	else:
-		dist_mean = zeros(k)
+		dist_mean = np.zeros(k)
 		for kk in range(k):
 			draw_b = choice([1., -1], len(sample1))
 
@@ -844,7 +827,7 @@ def permutation_test(sample1, sample2, k=1000, p_value=0.05, two_tailed=True, lo
 
 			dist_mean[kk] = diff_resampled_b.mean()
 
-	ci = percentile(dist_mean, [100.*p_value/2., 100.*(1.-p_value/2.)])
+	ci = np.percentile(dist_mean, [100.*p_value/2., 100.*(1.-p_value/2.)])
 
 	return ci[0]<=diff_mean_empirical<=ci[1], ci
 
@@ -853,10 +836,12 @@ def permutation_test_only_diff(diff_sample, k=1000, p_value=0.05, two_tailed=Tru
 	Use in case you have only access to the differences in the 
 	two sequences, not the sequences themselves.
 	"""
+	from numpy.random import choice
+
 	if not two_tailed:
 		raise Exception('One-tailed test not implemented yet')
 
-	diff = array(diff_sample)
+	diff = np.array(diff_sample)
 	diff_mean_empirical = diff.mean()
 	
 	if not low_mem:
@@ -865,7 +850,7 @@ def permutation_test_only_diff(diff_sample, k=1000, p_value=0.05, two_tailed=Tru
 		diff_resampled = draw * diff
 		dist_mean = diff_resampled.mean(axis=1)
 	else:
-		dist_mean = zeros(k)
+		dist_mean = np.zeros(k)
 		for kk in range(k):
 			draw_b = choice([1., -1], len(diff))
 
@@ -873,7 +858,7 @@ def permutation_test_only_diff(diff_sample, k=1000, p_value=0.05, two_tailed=Tru
 
 			dist_mean[kk] = diff_resampled_b.mean()
 
-	ci = percentile(dist_mean, [100.*p_value/2., 100.*(1.-p_value/2.)])
+	ci = np.percentile(dist_mean, [100.*p_value/2., 100.*(1.-p_value/2.)])
 
 	return ci[0]<=diff_mean_empirical<=ci[1], ci
 
@@ -895,17 +880,19 @@ def human_format_for_ticks(x, pos):
 	'The two args are the value and tick position'
 	return human_format(x)
 
-def draw_zonemap(x_min,y_min,x_max,y_max,res, continents_color='white', lake_color='white', sea_color='white',\
-	 lw=0.8, draw_mer_par=True, color_coast_lines='#6D5F47', color_countries='#6D5F47'):
-	m = Basemap(projection='gall',lon_0=0.,llcrnrlon=y_min,llcrnrlat=x_min,urcrnrlon=y_max,urcrnrlat=x_max,resolution=res)
-	m.drawmapboundary(fill_color=sea_color) #set a background colour
-	m.fillcontinents(color=continents_color, lake_color=lake_color)  # #85A6D9')
-	m.drawcoastlines(color=color_coast_lines, linewidth=lw)
-	m.drawcountries(color=color_countries, linewidth=lw)
-	if draw_mer_par:
-		m.drawmeridians(arange(-180, 180, 5), color='#bbbbbb')
-		m.drawparallels(arange(-90, 90, 5), color='#bbbbbb')
-	return m
+# def draw_zonemap(x_min,y_min,x_max,y_max,res, continents_color='white', lake_color='white', sea_color='white',\
+# 	 lw=0.8, draw_mer_par=True, color_coast_lines='#6D5F47', color_countries='#6D5F47'):
+# 	from mpl_toolkits.basemap import Basemap
+#
+# 	m = Basemap(projection='gall',lon_0=0.,llcrnrlon=y_min,llcrnrlat=x_min,urcrnrlon=y_max,urcrnrlat=x_max,resolution=res)
+# 	m.drawmapboundary(fill_color=sea_color) #set a background colour
+# 	m.fillcontinents(color=continents_color, lake_color=lake_color)  # #85A6D9')
+# 	m.drawcoastlines(color=color_coast_lines, linewidth=lw)
+# 	m.drawcountries(color=color_countries, linewidth=lw)
+# 	if draw_mer_par:
+# 		m.drawmeridians(np.arange(-180, 180, 5), color='#bbbbbb')
+# 		m.drawparallels(np.arange(-90, 90, 5), color='#bbbbbb')
+# 	return m
 
 def simple_color_map_function(color1, color2, min_value=0., max_value=1.):
 	"""
@@ -918,8 +905,8 @@ def simple_color_map_function(color1, color2, min_value=0., max_value=1.):
 
 	def f(value):
 		norm_value = (float(max_value)-float(value))/(float(max_value)-float(min_value))
-		avg = average(array([color1, color2]), axis=0, weights=[norm_value, 1. - norm_value])
-		return clip(avg, 0., 1.)
+		avg = np.average(np.array([color1, color2]), axis=0, weights=[norm_value, 1. - norm_value])
+		return np.clip(avg, 0., 1.)
 	return f
 
 def simple_colormap_object(cmap_f, min_value=0., max_value=1., k=100):
@@ -930,8 +917,11 @@ def simple_colormap_object(cmap_f, min_value=0., max_value=1., k=100):
 	cbar = fig.colorbar(sm) # use the right-hand side with subplots, ax=axes[:])
 	cbar.ax.set_ylabel('Statistical significance')
 	"""
-	cmap, norm = mcolors.from_levels_and_colors(linspace(min_value, max_value, k+1),
-												[cmap_f(hue) for hue in linspace(min_value, max_value, k)])
+	import matplotlib.colors as mcolors
+	import matplotlib
+
+	cmap, norm = mcolors.from_levels_and_colors(np.linspace(min_value, max_value, k+1),
+												[cmap_f(hue) for hue in np.linspace(min_value, max_value, k)])
 	sm = matplotlib.cm.ScalarMappable(cmap=cmap, norm=norm)
 	sm.set_array([])
 
@@ -979,7 +969,7 @@ def _pre_compute_positions(G, color_nodes=nice_colors[1], first_col_map_node=nic
 
 	if type(color_nodes)==dict:
 		color_nodes = [color_nodes[n] for n in nodes]
-	elif type(color_nodes) in [unicode, str]:
+	elif type(color_nodes) in [str]:
 		if color_nodes=='strength':
 			values = [G.degree(n, weight=key_word_weight) for n in nodes]
 			if lower_value_color=='min':
@@ -1004,7 +994,7 @@ def _pre_compute_positions(G, color_nodes=nice_colors[1], first_col_map_node=nic
 				max_value = highest_value_color
 			map_col = simple_color_map_function(first_col_map_node, second_col_map_node, min_value, max_value)
 			color_nodes = [map_col(G.degree(n)) for n in nodes]
-		elif type(color_nodes) in [str, unicode]:
+		elif type(color_nodes) in [str]:
 			values = [G.node[n][color_nodes] for n in nodes]
 			if lower_value_color=='min':
 				min_value = min(values)
@@ -1031,7 +1021,7 @@ def _pre_compute_positions(G, color_nodes=nice_colors[1], first_col_map_node=nic
 			size_nodes=[G.degree(n, weight=key_word_weight)*size_nodes[1] for n in nodes]
 		elif size_nodes[0]=='degree':
 			size_nodes=[G.degree(n)*size_nodes[1] for n in nodes]
-		elif type(size_nodes[0]) in [str, unicode]:
+		elif type(size_nodes[0]) in [str]:#, unicode]:
 			size_nodes = [G.node[n][size_nodes[0]]*size_nodes[1] for n in nodes]
 		else:
 			Exception("The following size function is not implemented:" + size_nodes)
@@ -1075,11 +1065,11 @@ def _pre_compute_positions(G, color_nodes=nice_colors[1], first_col_map_node=nic
 						color = color_multi[l]
 						xe1, ye1 = (G.node[n1]['coord'][0]/unit, G.node[n1]['coord'][1]/unit)
 						xe2, ye2 = (G.node[n2]['coord'][0]/unit, G.node[n2]['coord'][1]/unit)
-						o = array((xe1, ye1))
-						d = array((xe2, ye2))
+						o = np.array((xe1, ye1))
+						d = np.array((xe2, ye2))
 						if len(G[n1][n2].keys())>1:
-							n = array((-ye2+ye1, xe2-xe1))# normal to edge
-							n = n/linalg.norm(n)
+							n = np.array((-ye2+ye1, xe2-xe1))# normal to edge
+							n = n/np.linalg.norm(n)
 							shift = 2.*shift_multilayer * i / (len(G[n1][n2].keys())-1.) - shift_multilayer
 							o += n * shift
 							d += n * shift
@@ -1097,105 +1087,107 @@ def _pre_compute_positions(G, color_nodes=nice_colors[1], first_col_map_node=nic
 		
 	return nodes, limits, color_nodes, z_order_nodes, size_nodes, edges_positions, edges_width, edges_colors
 
-def map_of_net(G, color_nodes=nice_colors[1], first_col_map_node=nice_colors[1], second_col_map_node=nice_colors[2], limits=(0,0,0,0), title='', size_nodes=1., size_edges=2., nodes=[], zone_geo=[], edges=True, fmt='svg', dpi=100, \
-	save_file=None, show=True, figsize=(9,6), continents_color='white', sea_color='white', key_word_weight=None, z_order_nodes=6, diff_edges=False, lw_map=0.8,\
-	draw_mer_par=True, ax=None, coords_in_minutes=True, use_basemap=False, split_nodes_by=0., enlarge_limits=0., color_coast_lines='#6D5F47', color_countries='#6D5F47',\
-	shift_multilayer=0.1, colors_multilayer=nice_colors, multilayer=False, bbox_inches='tight', alpha_edges=1., antialiased=False, node_edgecolor='w', alpha_nodes=1.,\
-	node_contour_width=1., lower_value_color='min', delete_fig=False, highest_value_color='max'):
-
-	"""
-	limites is (lat_min, lon_min, lat_max, lon_max)
-	"""
-	
-	nodes, \
-	(x_min, y_min, x_max, y_max), \
-	color_nodes, \
-	z_order_nodes, \
-	size_nodes, \
-	edges_positions, \
-	edge_width, \
-	edges_colors = _pre_compute_positions(G, 
-										color_nodes=color_nodes, 
-										first_col_map_node=first_col_map_node,
-										second_col_map_node=second_col_map_node,
-										limits=limits, 
-										size_nodes=size_nodes, 
-										nodes=nodes, 
-										edges=edges, 
-										key_word_weight=key_word_weight, 
-										z_order_nodes=z_order_nodes, 
-										diff_edges=diff_edges, 
-										coords_in_minutes=coords_in_minutes, 
-										size_edges=size_edges,
-										enlarge_limits=enlarge_limits,
-										shift_multilayer=shift_multilayer,
-										colors_multilayer=colors_multilayer,
-										multilayer=multilayer,
-										lower_value_color=lower_value_color,
-										highest_value_color=highest_value_color)
-
-	if ax==None:
-		fig = plt.figure(figsize=figsize)
-		ax = fig.add_subplot(111)
-		#ax = plt.subplot()
-		ax.set_aspect(figsize[1]/figsize[0])
-		ax.set_title(title)
-	
-	# Make basemap
-	if not use_basemap:
-		def m(a, b):
-			return b, a
-		ax.set_xlim((x_min, x_max))
-		ax.set_ylim((y_min, y_max))
-	else:
-		m = draw_zonemap(x_min, y_min, x_max, y_max, 
-			'i', 
-			sea_color=sea_color, 
-			continents_color=continents_color, 
-			lake_color=sea_color,
-			lw=lw_map, 
-			draw_mer_par=draw_mer_par,
-			color_coast_lines=color_coast_lines,
-			color_countries=color_countries)
-	# Convert coordinates
-	if split_nodes_by>0.:
-		x, y = split_coords(G, nodes, r=split_nodes_by)
-	else:
-		x, y = zip(*[G.node[n]['coord'] for n in nodes])
-
-	x, y = m(y,x)
-
-	# Draw nodes
-	if node_edgecolor=='same':
-		node_edgecolor = color_nodes
-	try:
-		ax.scatter(x, y, marker='o', zorder=z_order_nodes, s=size_nodes, c=color_nodes, lw=node_contour_width, edgecolor=node_edgecolor, alpha=alpha_nodes)#,cmap=my_cmap)
-	except:
-		print ('color_nodes')
-		print (color_nodes)
-		raise
-
-	# Draw edges
-	for i, (xxs, yys) in enumerate(edges_positions):
-		xxs, yys = m(yys, xxs)
-		lw = edge_width[i]
-		cl = edges_colors[i]
-		ax.plot(xxs, yys, '-', lw=lw, color=cl, zorder=4, alpha=alpha_edges, antialiased=antialiased)
-
-	if zone_geo!=[]:
-		patch = PolygonPatch(adapt_shape_to_map(zone_geo, m), facecolor='grey', edgecolor='grey', alpha=0.08, zorder=3)#edgecolor='grey', alpha=0.08,zorder=3)
-		ax.add_patch(patch)
-
-	if save_file!=None:
-		plt.savefig(save_file + '.' + fmt, dpi=dpi, bbox_inches=bbox_inches)
-		print ('Figure saved as', save_file + '.' + fmt)
-	if show:
-		plt.show()
-
-	if delete_fig:
-		plt.close("all")
-	else:
-		return ax
+# def map_of_net(G, color_nodes=nice_colors[1], first_col_map_node=nice_colors[1], second_col_map_node=nice_colors[2], limits=(0,0,0,0), title='', size_nodes=1., size_edges=2., nodes=[], zone_geo=[], edges=True, fmt='svg', dpi=100, \
+# 	save_file=None, show=True, figsize=(9,6), continents_color='white', sea_color='white', key_word_weight=None, z_order_nodes=6, diff_edges=False, lw_map=0.8,\
+# 	draw_mer_par=True, ax=None, coords_in_minutes=True, use_basemap=False, split_nodes_by=0., enlarge_limits=0., color_coast_lines='#6D5F47', color_countries='#6D5F47',\
+# 	shift_multilayer=0.1, colors_multilayer=nice_colors, multilayer=False, bbox_inches='tight', alpha_edges=1., antialiased=False, node_edgecolor='w', alpha_nodes=1.,\
+# 	node_contour_width=1., lower_value_color='min', delete_fig=False, highest_value_color='max'):
+#
+# 	"""
+# 	limites is (lat_min, lon_min, lat_max, lon_max)
+# 	"""
+#
+# 	import matplotlib.pyplot as plt
+#
+# 	nodes, \
+# 	(x_min, y_min, x_max, y_max), \
+# 	color_nodes, \
+# 	z_order_nodes, \
+# 	size_nodes, \
+# 	edges_positions, \
+# 	edge_width, \
+# 	edges_colors = _pre_compute_positions(G,
+# 										color_nodes=color_nodes,
+# 										first_col_map_node=first_col_map_node,
+# 										second_col_map_node=second_col_map_node,
+# 										limits=limits,
+# 										size_nodes=size_nodes,
+# 										nodes=nodes,
+# 										edges=edges,
+# 										key_word_weight=key_word_weight,
+# 										z_order_nodes=z_order_nodes,
+# 										diff_edges=diff_edges,
+# 										coords_in_minutes=coords_in_minutes,
+# 										size_edges=size_edges,
+# 										enlarge_limits=enlarge_limits,
+# 										shift_multilayer=shift_multilayer,
+# 										colors_multilayer=colors_multilayer,
+# 										multilayer=multilayer,
+# 										lower_value_color=lower_value_color,
+# 										highest_value_color=highest_value_color)
+#
+# 	if ax==None:
+# 		fig = plt.figure(figsize=figsize)
+# 		ax = fig.add_subplot(111)
+# 		#ax = plt.subplot()
+# 		ax.set_aspect(figsize[1]/figsize[0])
+# 		ax.set_title(title)
+#
+# 	# Make basemap
+# 	if not use_basemap:
+# 		def m(a, b):
+# 			return b, a
+# 		ax.set_xlim((x_min, x_max))
+# 		ax.set_ylim((y_min, y_max))
+# 	else:
+# 		m = draw_zonemap(x_min, y_min, x_max, y_max,
+# 			'i',
+# 			sea_color=sea_color,
+# 			continents_color=continents_color,
+# 			lake_color=sea_color,
+# 			lw=lw_map,
+# 			draw_mer_par=draw_mer_par,
+# 			color_coast_lines=color_coast_lines,
+# 			color_countries=color_countries)
+# 	# Convert coordinates
+# 	if split_nodes_by>0.:
+# 		x, y = split_coords(G, nodes, r=split_nodes_by)
+# 	else:
+# 		x, y = zip(*[G.node[n]['coord'] for n in nodes])
+#
+# 	x, y = m(y,x)
+#
+# 	# Draw nodes
+# 	if node_edgecolor=='same':
+# 		node_edgecolor = color_nodes
+# 	try:
+# 		ax.scatter(x, y, marker='o', zorder=z_order_nodes, s=size_nodes, c=color_nodes, lw=node_contour_width, edgecolor=node_edgecolor, alpha=alpha_nodes)#,cmap=my_cmap)
+# 	except:
+# 		print ('color_nodes')
+# 		print (color_nodes)
+# 		raise
+#
+# 	# Draw edges
+# 	for i, (xxs, yys) in enumerate(edges_positions):
+# 		xxs, yys = m(yys, xxs)
+# 		lw = edge_width[i]
+# 		cl = edges_colors[i]
+# 		ax.plot(xxs, yys, '-', lw=lw, color=cl, zorder=4, alpha=alpha_edges, antialiased=antialiased)
+#
+# 	if zone_geo!=[]:
+# 		patch = PolygonPatch(adapt_shape_to_map(zone_geo, m), facecolor='grey', edgecolor='grey', alpha=0.08, zorder=3)#edgecolor='grey', alpha=0.08,zorder=3)
+# 		ax.add_patch(patch)
+#
+# 	if save_file!=None:
+# 		plt.savefig(save_file + '.' + fmt, dpi=dpi, bbox_inches=bbox_inches)
+# 		print ('Figure saved as', save_file + '.' + fmt)
+# 	if show:
+# 		plt.show()
+#
+# 	if delete_fig:
+# 		plt.close("all")
+# 	else:
+# 		return ax
 
 #########################################################################################
 
@@ -1257,6 +1249,8 @@ def show_dic(dic):
 			print (k, ":", v)
 
 def alphabet(length):
+	import string
+
 	# Generate 'A', B', then 'AA', 'BB', etc.
 	letters = list(string.ascii_uppercase)
 	while len(letters)<length:
@@ -1296,6 +1290,7 @@ def parallelize_old(f, inputs, nprocs=None):
 	nprocs: int,
 		number of processes to create. If None, max number of processes.
 	"""
+	import multiprocessing as mp
 
 	pool = mp.Pool(nprocs)
 
@@ -1318,6 +1313,8 @@ def parallelize(f, args=None, kwargs=None, nprocs=None):
 	nprocs: int,
 		number of processes to create. If None, max number of processes.
 	"""
+
+	import multiprocessing as mp
 	
 	if kwargs is None:
 		kwargs = [{}]*len(args)
@@ -1358,7 +1355,7 @@ def function_with_queues(f,q_in, q_out):
 		res = f(*data)
 		q_out.put((i,res))
 
-def parmap(f, X, nprocs=mp.cpu_count()):
+def parmap(f, X, nprocs=None):
 	"""
 	Typical use:
 	inputs = [(a, ) for a in aa]
@@ -1366,11 +1363,17 @@ def parmap(f, X, nprocs=mp.cpu_count()):
  
 	where f(a) for instance.
 	"""
+
+	import multiprocessing as mp
+
+	if nprocs is None:
+		nprocs = mp.cpu_count()
+
 	#Create input and output queues
 	q_in = mp.Queue()
 	q_out = mp.Queue()
 
-	#Launch processes with queu in an out
+	#Launch processes with queue in an out
 	proc = [mp.Process(target=function_with_queues, args=(f, q_in, q_out))
 			for _ in range(nprocs)]
 
@@ -1378,7 +1381,7 @@ def parmap(f, X, nprocs=mp.cpu_count()):
 	
 	#Producer of input
 	[q_in.put((i,item)) for i,item in enumerate(X)] #Put i so that we can keep track of order to sort at return
-	[q_in.put((None,None)) for _ in range(nprocs)] #Put None at the end so that the consummer finish
+	[q_in.put((None,None)) for _ in range(nprocs)] #Put None at the end so that the consumer finish
 
 	#Close the queues
 	q_in.close()
@@ -1400,13 +1403,18 @@ def parmap(f, X, nprocs=mp.cpu_count()):
 	#Return results ordered
 	return [x for i, x in sorted(res)]
 
-def parmap2(f, X, nprocs=mp.cpu_count()):
+def parmap2(f, X, nprocs=None):
 	"""
 	Typical use:
 	inputs = [(a, ) for a in aa]
 	results = parmap(f, inputs)
 	where f(a) for instance.
 	"""
+
+	import multiprocessing as mp
+
+	if nprocs is None:
+		nprocs = mp.cpu_count()
 
 	q_in = mp.Queue(1)
 	q_out = mp.Queue()
@@ -1429,13 +1437,13 @@ def spread_integer(n, n_cap):
 	X = []
 	n_still = n
 	while n_still>0.:
-		X += [int(ceil(n_still/(n_cap-len(X))))]
+		X += [int(np.ceil(n_still/(n_cap-len(X))))]
 		
 		n_still -= X[-1]
 
 	return X
 
-@contextmanager
+@contextlib.contextmanager
 def ssh_client_connection(connection=None, ssh_hostname=None, ssh_username=None, ssh_password=None, ssh_pkey=None,
 						ssh_key_password=''):
 	"""
@@ -1445,6 +1453,8 @@ def ssh_client_connection(connection=None, ssh_hostname=None, ssh_username=None,
 	The latter uses ssh_tunnel, whereas this one uses
 	paramiko
 	"""
+
+	from paramiko import SSHClient
 
 	kill_connection = False
 	if connection is None:
@@ -1470,10 +1480,14 @@ def ssh_client_connection(connection=None, ssh_hostname=None, ssh_username=None,
 			connection.close()         
 			
 def ssh_copy(f,t,ssh):
+	from scp import SCPClient
+
 	with SCPClient(ssh.get_transport()) as scp:
 		scp.put(f,t)
 
 def ssh_tunnel_connection(ssh_parameters, hostname, port=22, allow_agent=False, debug_level=0):
+	from sshtunnel import open_tunnel
+
 	if 'ssh_password' in ssh_parameters.keys():
 		ssh_tunnel = open_tunnel(ssh_parameters.get('ssh_hostname'),
 										ssh_username=ssh_parameters.get('ssh_username'),
@@ -1497,13 +1511,15 @@ def ssh_tunnel_connection(ssh_parameters, hostname, port=22, allow_agent=False, 
 
 	return ssh_tunnel
 
-@contextmanager
+@contextlib.contextmanager
 def mysql_server(engine=None, hostname=None, port=None, username=None, password=None, database=None,
 	connector='mysqldb', ssh_parameters=None, allow_agent=False, ssh_tunnel=None,
 	debug_level = 0):
 	"""
 	If engine is given, yield simply engine.
 	"""
+
+	from sqlalchemy import create_engine
 
 	kill_engine = False
 	if engine is None:
@@ -1523,7 +1539,7 @@ def mysql_server(engine=None, hostname=None, port=None, username=None, password=
 			if not ssh_tunnel is None:
 				ssh_tunnel.stop()
 
-# Two way dict
+# Two-way dict
 class TwoWayDict(dict):
 	def add(self, item1, item2):
 		# Preferred methods
@@ -1586,16 +1602,13 @@ def build_step_multi_valued_function(df, name_min_col='delay_min_minutes', name_
 	
 	return f
 
-def build_step_bivariate_function(df,
-	name_min_col1='flight_type_distance_gcd_km_min',
-	name_max_col1='flight_type_distance_gcd_km_max',
-	name_min_col2='delay_min_minutes',
-	name_max_col2='delay_max_minutes',
-	value_column='compensation',
-	add_lower_bound1=None, add_upper_bound1=None,
-	value_lower_bound1=0., value_upper_bound1=99999.,
-	add_lower_bound2=None, add_upper_bound2=None,
-	value_lower_bound2=0., value_upper_bound2=99999.):
+def build_step_bivariate_function(df,name_min_col1='flight_type_distance_gcd_km_min',
+									name_min_col2='delay_min_minutes',
+									value_column='compensation',
+									add_lower_bound1=None, add_upper_bound1=None,
+									value_lower_bound1=0., value_upper_bound1=99999.,
+									add_lower_bound2=None, add_upper_bound2=None,
+									value_lower_bound2=0., value_upper_bound2=99999.):
 
 	if value_lower_bound1>value_upper_bound1:
 		value_upper_bound1 = value_lower_bound1 
@@ -1609,55 +1622,30 @@ def build_step_bivariate_function(df,
 		mins1 = [add_lower_bound1] + mins1
 		
 	for v1 in mins1:
-		#print ('v1=', v1)
 		values[v1] = OrderedDict()
-		
-		#print (mask1)
+
 		mins2 = sorted(list(set(df[name_min_col2])))
 		if not add_lower_bound2 is None:
 			mins2 = [add_lower_bound2] + mins2
-			
-		#print (mins2)
 			
 		for i, v2 in enumerate(mins2):
 			if (not add_lower_bound2 is None) and i==0:
 				values[v1][v2] = value_lower_bound2
 			else:
-				#print ('v2=', v2)
 				mask = (df[name_min_col1]==v1) & (df[name_min_col2]==v2)
-				#print (mask)
 				dff = df[mask]
 				if len(dff)>0:
 					values[v1][v2] = dff.iloc[0][value_column]
-				
-	#print (values)
 
 	def f(x1, x2):
-		# print ('x1, x2', x1, x2)
-		#print ([type(a) for a in list(values.keys())])
-		# print (list(values.keys()))
 		it = (i for i, v in enumerate(values.keys()) if x1 < v)
-		# print (list(((i, v) for i, v in enumerate(values.keys()) if x1 < v)))
 		idx1 = max(0, next(it, len(values.keys())) - 1)
-		# print ('idx1=', idx1)
 		v1 = list(values.keys())[idx1]
 		
-		# print ('v1=', v1)
-		# print (values[v1])
-		# print (list(values[v1].keys()))
-		
 		it2 = (i for i, v in enumerate(values[v1].keys()) if x2 < v)
-		#print ([i for i, v in enumerate(values[v1].keys()) if x2 < v])
-		#print ('aoin', next(it, len(values[v1].keys())))
 		coin = next(it2, len(values[v1].keys()))
-		#print ('coin', coin)
-		idx2 = max(0, coin-1) # max(0, coin - 2)
-		# if idx2<0:
-		# 	raise Exception('No value below:', list(values[v1].keys())[0])
-		#print ('idx2=', idx2)
+		idx2 = max(0, coin-1)
 		v2 = list(values[v1].keys())[idx2]
-
-		#print (values[v1][v2])
 	
 		return values[v1][v2]
 	
@@ -1676,8 +1664,8 @@ def inv_mu_sig_lognorm(mu_p, sig_p):
 
 	A = 1+sig_p**2/mu_p**2
 
-	mu = log(mu_p) - 0.5 * log(A)
-	sig = sqrt(log(A))
+	mu =np. np.log(mu_p) - 0.5 * np.log(A)
+	sig = np.sqrt(np.log(A))
 
 	return mu, sig
 
@@ -1688,7 +1676,7 @@ def inv_s_scale_lognorm(mu_p, sig_p):
 	mu, sig = inv_mu_sig_lognorm(mu_p, sig_p)
 
 	s = sig
-	scale = exp(mu)
+	scale = np.exp(mu)
 
 	return s, scale
 
@@ -1697,9 +1685,12 @@ def scale_and_s_from_quantile_sigma_lognorm(q, m, sig_p):
 	assumes loc = 0.
 	"""
 
+	from scipy.optimize import minimize_scalar
+	from scipy.special import erfinv
+
 	def build_f(sig_p, q, m):
 		def f(x):
-			return (exp(-x**2) + (sig_p/m)**2 * exp(2. * sqrt(2) * erfinv(2.*q - 1.) * x - 2. * x**2) -1.)**2
+			return (np.exp(-x**2) + (sig_p/m)**2 * np.exp(2. * np.sqrt(2) * erfinv(2.*q - 1.) * x - 2. * x**2) -1.)**2
 		
 		return f
 		
@@ -1707,11 +1698,11 @@ def scale_and_s_from_quantile_sigma_lognorm(q, m, sig_p):
 
 	results = minimize_scalar(f, method='bounded', bounds=(0, sig_p))
 	
-	if results['fun']>1e-6:
-		aprint ('results minimisation:', results)
+	# if results['fun']>1e-6:
+	# 	aprint ('results minimisation:', results)
 	
 	s = results['x']
-	scale =  m * exp(-sqrt(2.) * s * erfinv(2.*q - 1.))
+	scale =  m * np.exp(-np.sqrt(2.) * s * erfinv(2.*q - 1.))
 	
 	return scale, s
 
@@ -1724,13 +1715,15 @@ def scale_and_s_from_mean_sigma_lognorm(mu, sig):
 	"""
 	B = 1.+ (sig/mu)**2
 
-	scale = mu/sqrt(B)
+	scale = mu/np.sqrt(B)
 
-	s = sqrt(log(B))
+	s = np.sqrt(np.log(B))
 
 	return scale, s
 
 def sol_Bs(sig_p, M_p):
+	from mpmath import polyroots
+
 	t = (sig_p/M_p)**2
 	
 	sols = polyroots([1,1,-t,t])
@@ -1739,7 +1732,7 @@ def sol_Bs(sig_p, M_p):
 	if len(sols)>0:
 		sol = sorted(sols)[0]
 	else:
-		sol=nan
+		sol = np.nan
 	return sol
 
 def A_B(sig_p, M_p):
@@ -1757,9 +1750,9 @@ def inv_s_loc_scale_lognorm(mu_p, sig_p, M_p):
 
 	A, B = A_B(sig_p, M_p)
 	
-	s = sqrt(log(B))
+	s = np.sqrt(np.log(B))
 	scale = A
-	loc = - A * sqrt(B) + mu_p
+	loc = - A * np.sqrt(B) + mu_p
 	
 	return s, loc, scale
 
@@ -1777,10 +1770,12 @@ def partial_corr(C, corr_type='pearson'):
 		P[i, j] contains the partial correlation of C[:, i] and C[:, j] controlling
 		for the remaining variables in C.
 	"""
+	from scipy.stats import pearsonr, spearmanr
+
 	if corr_type=='pearson':
-		corr_func = stats.pearsonr
+		corr_func = pearsonr
 	elif corr_type=='spearman':
-		corr_func = stats.spearmanr
+		corr_func = spearmanr
 	else:
 		raise Exception()
 	
@@ -1793,8 +1788,8 @@ def partial_corr(C, corr_type='pearson'):
 			idx = np.ones(p, dtype=np.bool)
 			idx[i] = False
 			idx[j] = False
-			beta_i = linalg.lstsq(C[:, idx], C[:, j])[0]
-			beta_j = linalg.lstsq(C[:, idx], C[:, i])[0]
+			beta_i = np.linalg.lstsq(C[:, idx], C[:, j])[0]
+			beta_j = np.linalg.lstsq(C[:, idx], C[:, i])[0]
 
 			res_j = C[:, j] - C[:, idx].dot( beta_i)
 			res_i = C[:, i] - C[:, idx].dot(beta_j)
@@ -1806,12 +1801,13 @@ def partial_corr(C, corr_type='pearson'):
 	return P_corr
 
 def compute_percentile_with_weight(df, by=None, weight=None, cols=None):
+	from livestats import livestats
+
 	a = df.groupby(by)
 
 	d = {}
 	for k in a.groups.keys():
 		dh = a.get_group(k)
-		#print (dh)
 		d[k] = {}
 		for col in cols:
 			gen = (row[col] for i, row in dh.iterrows() for j in range(int(row[weight])))
@@ -1821,9 +1817,9 @@ def compute_percentile_with_weight(df, by=None, weight=None, cols=None):
 			_ = [stuff.add(aa) for aa in gen]
 
 			d[k][col] = stuff.quantiles()[0][1]
-			#print ('k=', k, 'col=', col, stuff.quantiles()[0][1])
+
 	dg = pd.DataFrame(d).T
-	#dg.index.set_names(tuple(by))
+
 	return dg
 
 def weight_avg(df, by=None, weight=None, stats=['mean']):
@@ -1860,14 +1856,7 @@ def weight_avg(df, by=None, weight=None, stats=['mean']):
 			dh = dg.groupby(by).sum()
 			dh = np.sqrt((dh.mul(1./df[pp].groupby(by).sum()[weight], axis=0) - dh_avg**2))
 			dfs[stat] = dh
-			#print (dh)
 		elif stat.__name__=='percentile_90':
-			# # Massive in Memory...
-			# dg = pd.DataFrame([np.array(row[cols_p]) for i, row in df.iterrows() for j in range(int(row[weight]))],
-			# 				columns=cols_p)
-			# dfs[stat.__name__] = dg.groupby(by).agg(stat)
-			# #print (dg)
-
 			dh = compute_percentile_with_weight(df,
 												by=by,
 												weight=weight,

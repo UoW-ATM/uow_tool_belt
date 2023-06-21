@@ -1,6 +1,7 @@
+import matplotlib.pyplot as plt
 
 def bar_plot_template():
-	fig, ax = subplots(figsize=(18, 7))
+	fig, ax = plt.subplots(figsize=(18, 7))
 
 	ax.legend()
 	ax.set_ylabel('Change in \%')
@@ -14,5 +15,5 @@ def bar_plot_template():
 	return ax
 
 def savefig(*args, **kwargs):
-	kwargs[bbox_inches] = 'tight'
+	kwargs['bbox_inches'] = 'tight'
 	plt.savefig(*args, **kwargs)

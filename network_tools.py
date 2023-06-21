@@ -12,6 +12,7 @@ class DiMultiplex(nx.DiGraph):
 	Class for dealing with multiplex network, based on the 
 	networkx directed graph.
 	"""
+
 	def __init__(self, layers=[]):
 		super().__init__()
 		self.layers = layers

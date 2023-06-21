@@ -37,7 +37,7 @@ def dtw((a,b),f=dist,D_full=False):
     else:
         return D
 
-def dtw_path((a,b),D):
+def dtw_path((a,b), D):
     """
     Given distance matrix, compute the best match between objects of the list.
     input:

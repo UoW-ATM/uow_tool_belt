@@ -1,15 +1,9 @@
 import os
 from os.path import join as jn
-import pickle
-
-#from numpy import *
-
 import pandas as pd
-import tempfile
-from pathlib import Path
-
 from contextlib import contextmanager
-from importlib.machinery import SourceFileLoader
+import pickle
+import numpy as np
 
 from .general_tools import mysql_server, ssh_client_connection, yes
 
@@ -20,6 +14,9 @@ class EmptyConnection(dict):
 
 def extract_ssh_parameters(profile):
 	# TODO: put a path profile, like mysql_connection
+
+	from importlib.machinery import SourceFileLoader
+
 	kwargs = {}
 	name = profile
 	import general_tools as gt
@@ -81,6 +78,9 @@ def mysql_connection(connection=None, profile=None, path_profile=None, **kwargs)
 	mysql_connection()
 	-> creates an empty connection {'type':'mysql', 'engine':None, 'ssh_tunnel':None}
 	"""
+	from importlib.machinery import SourceFileLoader
+	from pathlib import Path
+
 	if not connection is None:
 		yield connection
 	else:
@@ -133,6 +133,9 @@ def file_connection(connection=None, profile=None, path_profile=None, base_path=
 
 	profile is ignored if a non-None engine is passed in argument.
 	"""
+	from importlib.machinery import SourceFileLoader
+	from pathlib import Path
+
 	if not connection is None:
 		yield connection
 	else:
@@ -158,7 +161,6 @@ def file_connection(connection=None, profile=None, path_profile=None, base_path=
 					kwargs[par] = cred.__getattribute__(par)
 
 			with ssh_client_connection(**kwargs) as ssh_connection:
-				#connection['connection_type'] = 'ssh'
 				connection = {'ssh_connection':ssh_connection,
 							'type':'file',
 							'base_path':base_path}
@@ -183,7 +185,7 @@ def get_data_csv(model_version=None, profile=None, n_iters=None, scenario=None, 
 	Note: one cannot pass a connection object coming from mysql_server here,
 	they are not the same kind of objects.
 	"""
-	with ssh_connection(profile=profile) as ssh_connection_engine:
+	with ssh_client_connection(profile=profile) as ssh_connection_engine:
 		dfs = []
 		for i in n_iters:
 			print ('Trying to read iteration', i)
@@ -268,8 +270,7 @@ def read_data(fmt=None, connection=None, profile=None, **kwargs):
 	return df
 
 def read_csv(file_name='', path='', connection=None, profile=None, **other_paras):
-	# if profile is None:
-	# 	profile = 'local'
+	from pathlib import Path
 
 	with file_connection(connection=connection, profile=profile) as my_file_connection:
 		ppath = Path(path)
@@ -289,7 +290,7 @@ def read_csv(file_name='', path='', connection=None, profile=None, **other_paras
 	return df
 
 def do_query(sql, con):
-	# This section is required, otherwise the the execute part below fails...
+	# This section is required, otherwise the execute part below fails...
 	try:
 		con.run_callable(
 			con.dialect.has_table, sql, None
@@ -317,6 +318,8 @@ def run_mysql_query(query, connection=None, profile=None, **options):
 def read_pickle(file_name='', path='', connection=None, profile=None, byte=True, **garbage):
 	"""
 	"""
+	from pathlib import Path
+
 	if byte:
 		mode = 'rb'
 	else:
@@ -394,7 +397,7 @@ def read_mysql(select=None, fromm=None, conditions={}, query=None, connection=No
 
 			query = 'SELECT ' + select + ' FROM ' + fromm + ' WHERE '
 			for k, v in conditions.items():
-				if type(v) in[unicode, str]:
+				if type(v) in [str]:
 					v = '"' + v + '"'
 				else:
 					v = str(v)
@@ -449,7 +452,6 @@ def write_data(data, fmt=None, connection=None, profile=None, **kwargs):
 	else:
 		if fmt is None:
 			if 'file_name' in kwargs.keys():
-				#print (kwargs['file_name'])
 				if kwargs['file_name'].split('.')[-1]=='csv':
 					fmt = 'csv'
 				elif kwargs['file_name'].split('.')[-1]=='pic':
@@ -458,7 +460,6 @@ def write_data(data, fmt=None, connection=None, profile=None, **kwargs):
 					raise Exception("I could not guess the data format for", kwargs['file_name'], 'you need to pass it manually with fmt=')
 
 	if fmt=='mysql':
-		#write_mysql(what, where, how=how, connection=connection, **kwargs_extra)
 		write_mysql(data=data, connection=connection, profile=profile, **kwargs)
 	elif fmt=='csv':
 		write_csv(data=data, connection=connection, profile=profile, **kwargs)
@@ -471,6 +472,7 @@ def write_csv(data=None, file_name='',  path='', connection=None, profile=None,
 	how='replace', create_folder=True, **other_paras):
 	"""
 	"""
+	from pathlib import Path
 
 	if how!='replace':
 		print ('You chose to save in csv with mode', how)
@@ -506,8 +508,11 @@ def write_csv(data=None, file_name='',  path='', connection=None, profile=None,
 		raise Exception('Not implemented yet')
 
 def write_pickle(data=None, file_name='',  path='', connection=None, profile=None,
-	how='replace', create_folder=True, **other_paras):
-	
+	how='replace', create_folder=True, byte=True, **other_paras):
+
+	from pathlib import Path
+
+
 	if how!='replace':
 		print ('You chose to save in csv with mode', how)
 		if yes("This is not implemented yet, shall I switch to 'replace'?"):
@@ -640,11 +645,11 @@ def write_mysql(data=None, table_name=None, how='update', key_for_update='id',
 					for col in data.columns:
 						if not str(col) in df_test:
 							mask = ~pd.isnull(data[col])
-							if type(data.loc[mask, col].iloc[0]) in [float, float64]:
+							if type(data.loc[mask, col].iloc[0]) in [float, np.float64]:
 								typ = 'FLOAT'
-							elif type(data.loc[mask, col].iloc[0]) in [int, int64]:
+							elif type(data.loc[mask, col].iloc[0]) in [int, np.int64]:
 								typ = 'INT'
-							elif type(data.loc[mask, col].iloc[0]) in [str, unicode]:
+							elif type(data.loc[mask, col].iloc[0]) in [str]:
 								typ = 'VARCHAR(100)'
 							# elif type(data.loc[mask, col].iloc[0]) in [list, tuple]:
 							# 	max_car = max([len(data.loc[mask, col].iloc[i]) for i in range(len(data.loc[mask, col]))])
@@ -686,11 +691,11 @@ def _update_table(new_table, table_name, key_for_update, engine=None):
 		for col in new_table.columns:
 			if not col in dff.columns:
 				typ = type(new_table[col].iloc[0])
-				if typ in [int, int64]:
+				if typ in [int, np.int64]:
 					type_sql = 'INT'
-				elif typ in [float, float64]:
+				elif typ in [float, np.float64]:
 					type_sql = 'FLOAT'
-				elif typ in [str, unicode]:
+				elif typ in [str]:
 					type_sql = 'VARCHAR(255)'
 				else:
 					print (typ)
@@ -710,7 +715,7 @@ def _update_table(new_table, table_name, key_for_update, engine=None):
 			for col in new_table.columns:
 				if col!=key_for_update:
 					value = new_table.loc[idx, col]
-					if type(value) in [str, unicode]:
+					if type(value) in [str]:
 						value = '"' + value + '"'
 					elif pd.isnull(value):
 						value = 'NULL'
@@ -729,6 +734,8 @@ def _update_table(new_table, table_name, key_for_update, engine=None):
 
 #Load data using cvs files
 def load_data_infile(engine, data, table, columns=None, drop_table=False, create_table=False, deactivate_checks_keys=False):
+	import tempfile
+
 	if drop_table:
 		engine.execute("DROP TABLE IF EXISTS " + table)
 		create_table = True
