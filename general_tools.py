@@ -1699,20 +1699,27 @@ def compute_percentile_with_weight(df, by=None, weight=None, cols=None):
 
 			stuff = livestats.LiveStats([0.9])
 
+
 			_ = [stuff.add(aa) for aa in gen]
 
 			d[k][col] = stuff.quantiles()[0][1]
 
 	dg = pd.DataFrame(d).T
-	#dg.index.set_names(tuple(by))
+	if dg.empty:
+		dg = pd.DataFrame(columns=[c for c in df.columns if not c in list(by)+[weight]],
+						  index=pd.MultiIndex(levels=[[] for c in range(len(by))],
+											  codes=[[] for c in range(len(by))],
+											  names=by))
+
 	return dg
 
 def weight_avg(df, by=None, weight=None, stats=['mean']):
+
 	dfs = {}
 	dfff = df.select_dtypes(include='number')
-	dffg =  df[[col for col in df.columns if (col in by) and (not col in dfff.columns)]]
+	dffg = df[[col for col in df.columns if (col in by) and (not col in dfff.columns)]]
 	df = pd.concat([dfff, dffg], axis=1)
-	if type(by)==list:
+	if type(by) == list:
 		pp = [weight] + by
 	else:
 		pp = [weight, by]
@@ -1731,7 +1738,7 @@ def weight_avg(df, by=None, weight=None, stats=['mean']):
 			dh = dg.groupby(by).sum()
 			dh = dh.mul(1./df[pp].groupby(by).sum()[weight], axis=0)
 			dfs[stat] = dh
-		elif stat=='std':
+		elif stat == 'std':
 			# Compute average first
 			dg = df[cols].mul(df[weight], axis=0)
 			dg[by] = df[by]
@@ -1743,15 +1750,15 @@ def weight_avg(df, by=None, weight=None, stats=['mean']):
 			dh = dg.groupby(by).sum()
 			dh = np.sqrt((dh.mul(1./df[pp].groupby(by).sum()[weight], axis=0) - dh_avg**2))
 			dfs[stat] = dh
-		elif stat.__name__=='percentile_90':
+		elif stat.__name__ == 'percentile_90':
 			dh = compute_percentile_with_weight(df,
 												by=by,
-												weight=weight,
+														weight=weight,
 												cols=cols)
 			dfs[stat.__name__] = dh
 		else:
 			print ('Ignoring unknown', stat, 'statistics')
-		
+
 	return pd.concat(dfs).unstack(level=0)
 
 def strip_string(s, to_strip):
