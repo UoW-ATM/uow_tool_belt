@@ -620,22 +620,22 @@ class Paras(dict):
 				if arg not in self.levels.keys():
 					self.levels[arg] = i
 
-# def read_paras(paras_file=None, post_process=None):
-# 	"""
-# 	Reads parameter file for a single simulation.
-# 	"""
-# 	import imp
-# 	if paras_file is None:
-# 		import my_paras as paras_mod
-# 	else:
-# 		paras_mod = imp.load_source("paras", paras_file)
-#
-# 	paras = paras_mod.paras
-#
-# 	if post_process!=None:
-# 		paras = post_process_paras(paras)
-#
-# 	return paras
+def read_paras(paras_file=None):#, post_process=None):
+	"""
+	Reads parameter file for a single simulation.
+	"""
+	import imp
+	if paras_file is None:
+		import my_paras as paras_mod
+	else:
+		paras_mod = imp.load_source("paras", paras_file)
+
+	paras = paras_mod.paras
+
+	# if post_process!=None:
+	# 	paras = post_process_paras(paras)
+
+	return paras
 
 def sort_lists(list1, list2, remove_nan=False):
 	"""
