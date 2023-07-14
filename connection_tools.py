@@ -65,6 +65,9 @@ def generic_connection(typ=None, connection=None, profile=None, path_profile=Non
 	elif typ=='file':
 		with file_connection(profile=profile, connection=connection, **kwargs) as connection:
 			yield connection
+	elif typ=='parquet':
+		with parquet_connection(profile=profile, connection=connection, **kwargs) as connection:
+			yield connection
 	elif typ is None:
 		yield EmptyConnection()
 	else:
@@ -187,6 +190,52 @@ def file_connection(connection=None, profile=None, path_profile=None, base_path=
 							'base_path':base_path}
 			yield connection
 
+@contextmanager
+def parquet_connection(connection=None, profile=None, path_profile=None, base_path=None, **kwargs):
+	"""
+	To uniformise with mysql connection
+	profile can be any string corresponding to a file 'db_profile_credentials.py'
+
+	profile is ignored if a non-None engine is passed in argument.
+	"""
+	from importlib.machinery import SourceFileLoader
+	from pathlib import Path
+
+	if not connection is None:
+		yield connection
+	else:
+		if not profile is None:
+			name = profile + '_credentials'
+			if path_profile is None:
+				path_profile = Path(__file__).parents[2]
+
+			cred = SourceFileLoader(name, jn(path_profile, name + '.py')).load_module()
+
+			if base_path is None:
+				try:
+					base_path = Path(cred.__getattribute__('base_path'))
+				except AttributeError:
+					base_path = Path('')
+				except:
+					raise
+
+		if not profile is None and profile!='local':
+
+			for par in ['ssh_hostname', 'ssh_username', 'ssh_password', 'ssh_pkey', 'ssh_key_password']:
+				if not par in kwargs.keys() and hasattr(cred, par):
+					kwargs[par] = cred.__getattribute__(par)
+
+			with ssh_client_connection(**kwargs) as ssh_connection:
+				connection = {'ssh_connection':ssh_connection,
+							'type':'file',
+							'base_path':base_path}
+				yield connection
+
+		else:
+			connection = {'ssh_connection':None,
+							'type':'parquet',
+							'base_path':base_path}
+			yield connection
 generic_names = {'RNG':'output_RNG.csv.gz', 'sim_general':'output_sim_general.csv.gz',
 				'flights':'output_flights.csv.gz', 'pax':'output_pax.csv.gz',
 				'swaps':'output_swaps.csv.gz', 'eaman':'output_eaman.csv.gz', 'dci':'output_dci.csv.gz',
@@ -246,10 +295,13 @@ def read_data(fmt=None, connection=None, profile=None, **kwargs):
 	df: pandas Dataframe
 
 	"""
+	#print('read_data',fmt,connection)
 
 	if not connection is None:
 		if connection['type']=='mysql':
 			fmt = 'mysql'
+		elif connection['type']=='parquet':
+			fmt = 'parquet'
 		else:
 			if fmt is None:
 				if 'file_name' in kwargs.keys():
@@ -275,6 +327,8 @@ def read_data(fmt=None, connection=None, profile=None, **kwargs):
 		df = read_csv(connection=connection, profile=profile, **kwargs)
 	elif fmt=='pickle':
 		df = read_pickle(connection=connection, profile=profile, **kwargs)
+	elif fmt=='parquet':
+		df = read_parquet(connection=connection, profile=profile, **kwargs)
 	else:
 		raise Exception('Unknown format mode:', fmt)
 
@@ -359,6 +413,23 @@ def read_pickle(file_name='', path='', connection=None, profile=None, byte=True,
 			with open(full_path, mode) as f:
 				df = pickle.load(f)
 			
+	return df
+
+def read_parquet(file_name='', query=None, connection=None, index_col=None, profile=None, **options):
+
+	import duckdb
+	#duckdb.load_extension('spatial')
+	#print('read_parquet', connection, profile)
+	sql = ''
+	for word in query.split(' '):
+		if 'bada3' in word or 'bada4_2' in word:
+			w = 'read_parquet(\''+str(connection['base_path'])+'/'+word+'.parquet\')'
+		else:
+			w=word
+		sql=sql+w+' '
+	#print(sql)
+	df=duckdb.query(sql).df()
+
 	return df
 
 def read_mysql(select=None, fromm=None, conditions={}, query=None, connection=None, index_col=None, profile=None, **options):
