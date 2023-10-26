@@ -1,16 +1,19 @@
 import os
 from os.path import join as jn
 from contextlib import contextmanager
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
 from .general_tools import mysql_server, ssh_client_connection, yes
 
+
 class EmptyConnection(dict):
 	def __init__(self):
 		super().__init__()
 		self['type'] = None
+
 
 def extract_ssh_parameters(profile):
 	# TODO: put a path profile, like mysql_connection
@@ -40,6 +43,7 @@ def extract_ssh_parameters(profile):
 
 	return kwargs
 
+
 def read_cred(profile, path_profile=None):
 	from importlib.machinery import SourceFileLoader
 	from pathlib import Path
@@ -52,6 +56,7 @@ def read_cred(profile, path_profile=None):
 	cred = SourceFileLoader(name, str(pat.resolve())).load_module()
 
 	return cred
+
 
 @contextmanager
 def generic_connection(typ=None, connection=None, profile=None, path_profile=None, **kwargs):
@@ -72,6 +77,7 @@ def generic_connection(typ=None, connection=None, profile=None, path_profile=Non
 		yield EmptyConnection()
 	else:
 		raise Exception('Type of connection', typ, 'is not supported.')
+
 
 @contextmanager
 def mysql_connection(connection=None, profile=None, path_profile=None, **kwargs):
@@ -143,6 +149,7 @@ def mysql_connection(connection=None, profile=None, path_profile=None, **kwargs)
 				mysql_connection['type'] = 'mysql'
 				yield mysql_connection
 
+
 @contextmanager
 def file_connection(connection=None, profile=None, path_profile=None, base_path=None, **kwargs):
 	"""
@@ -190,6 +197,7 @@ def file_connection(connection=None, profile=None, path_profile=None, base_path=
 							'base_path':base_path}
 			yield connection
 
+
 @contextmanager
 def parquet_connection(connection=None, profile=None, path_profile=None, base_path=None, **kwargs):
 	"""
@@ -236,54 +244,20 @@ def parquet_connection(connection=None, profile=None, path_profile=None, base_pa
 							'type':'parquet',
 							'base_path':base_path}
 			yield connection
-generic_names = {'RNG':'output_RNG.csv.gz', 'sim_general':'output_sim_general.csv.gz',
-				'flights':'output_flights.csv.gz', 'pax':'output_pax.csv.gz',
-				'swaps':'output_swaps.csv.gz', 'eaman':'output_eaman.csv.gz', 'dci':'output_dci.csv.gz',
-				'events':'output_events.csv.gz', 'messages':'output_messages.csv.gz'}
 
-# def get_data_csv(model_version=None, profile=None, n_iters=None, scenario=None, fil='flights',
-# 	generic_names=generic_names, rep='/home/ldel/domino_output/csv_output'):
-# 	"""
-# 	High level function to get csv files on the server for model version >=1.25
-	
-# 	Note: one cannot pass a connection object coming from mysql_server here,
-# 	they are not the same kind of objects.
-# 	"""
-# 	with ssh_connection(profile=profile) as ssh_connection_engine:
-# 		dfs = []
-# 		for i in n_iters:
-# 			print ('Trying to read iteration', i)
-# 			file_names = {k:str(model_version)+"_"+str(scenario)+"_"+str(i)+"_"+file_name for k, file_name in generic_names.items()}
-
-# 			try:
-# 				df = read_data(jn(rep,file_names[fil]),
-# 									profile=profile,
-# 									compression='gzip',
-# 									which='csv',
-# 									index_col=0,
-# 									ssh_connection_engine=ssh_connection_engine)
-# 				for st in ['aobt', 'sobt', 'aibt', 'sibt']:
-# 					if st in df.columns:
-# 						df[st] = pd.to_datetime(df.aobt)
-# 				dfs.append(df)
-# 			except FileNotFoundError:
-# 				print ('Iteration not found')
-# 				pass
-# 			except:
-# 				raise
-# 			#df.head()
-# 		df = pd.concat(dfs)
-		
-# 	return df
 
 def read_data(fmt=None, connection=None, profile=None, **kwargs):
 	"""
-	Wrapper designed to have uniformed input reading.
+	Wrapper designed to have uniformed input reading. The connection['type'] value determinates is the data should
+	be read as mysql or files. The fmt option can point to the type of files read. If the value
+	kwargs['file_name'] is present, the type of file will be inferred based on the extension of the file name, otherwise
+	it will be assumed that the format is parquet. One can specify the fmt option to make this explicit. Note that the
+	parquet format is less general than others, and that a 'scenario' key must be specified in kwargs.
 
 	Parameters
 	==========
 	fmt: string
-		either 'mysql', 'csv', or 'pickle'
+		either 'mysql', 'csv', 'pickle', or 'parquet'
 	connection: dictionary
 		
 	kwargs_mysql: dictionary
@@ -294,15 +268,14 @@ def read_data(fmt=None, connection=None, profile=None, **kwargs):
 	=======
 	df: pandas Dataframe
 
+	Note: automatic file format detection is not supported for parquet
 	"""
-	#print('read_data',fmt,connection)
 
 	if not connection is None:
-		if connection['type']=='mysql':
+		if connection['type'] == 'mysql':
 			fmt = 'mysql'
-		elif connection['type']=='parquet':
-			fmt = 'parquet'
 		else:
+			# Automatic detection of format
 			if fmt is None:
 				if 'file_name' in kwargs.keys():
 					if '.csv' in kwargs['file_name']:
@@ -311,6 +284,9 @@ def read_data(fmt=None, connection=None, profile=None, **kwargs):
 						fmt = 'pickle'
 					else:
 						raise Exception("I could not guess the data format for", kwargs['file_name'], 'you need to pass it manually with fmt=')
+				else:
+					# Assume the user wants parquet
+					fmt = 'parquet'
 	else:
 		if fmt is None:
 			if 'file_name' in kwargs.keys():
@@ -320,6 +296,9 @@ def read_data(fmt=None, connection=None, profile=None, **kwargs):
 					fmt = 'pickle'
 				else:
 					raise Exception("I could not guess the data format for", kwargs['file_name'], 'you need to pass it manually with fmt=')
+			else:
+				# Assume the user wants parquet
+				fmt = 'parquet'
 
 	if fmt=='mysql':
 		df = read_mysql(connection=connection, profile=profile, **kwargs)
@@ -333,6 +312,7 @@ def read_data(fmt=None, connection=None, profile=None, **kwargs):
 		raise Exception('Unknown format mode:', fmt)
 
 	return df
+
 
 def read_csv(file_name='', path='', connection=None, profile=None, **other_paras):
 	from pathlib import Path
@@ -354,6 +334,7 @@ def read_csv(file_name='', path='', connection=None, profile=None, **other_paras
 
 	return df
 
+
 def do_query(sql, con):
 	# This section is required, otherwise the execute part below fails...
 	try:
@@ -367,7 +348,8 @@ def do_query(sql, con):
 	rs = con.execute(sql)
 
 	return rs
-	
+
+
 def run_mysql_query(query, connection=None, profile=None, **options):
 	"""
 	This function whould be used only for queries that do not return data, e.g. table creation.
@@ -379,6 +361,7 @@ def run_mysql_query(query, connection=None, profile=None, **options):
 		rs = do_query(query, engine, **options)
 
 	return rs
+
 
 def read_pickle(file_name='', path='', connection=None, profile=None, byte=True, **garbage):
 	"""
@@ -415,27 +398,46 @@ def read_pickle(file_name='', path='', connection=None, profile=None, byte=True,
 			
 	return df
 
-def read_parquet(file_name='', query=None, connection=None, index_col=None, profile=None, **options):
 
+def read_parquet(scenario=None, query=None, connection=None, profile=None, **garbage):
+	"""
+	This function allows to read parquets files like an SQL database, by providing an SQL query. The query is
+	automatically cnverted to a format to be read with duckdb.
+	"""
+
+	# TODO: add ssh support and profile input
 	import duckdb
-	#duckdb.load_extension('spatial')
-	#print('read_parquet', connection, profile)
+	#duckdb.load_extension('spatial')s
+
 	sql = ''
-	for word in query.split(' '):
-		if 'bada3' in word or 'bada4_2' in word:
-			w = 'read_parquet(\''+str(connection['base_path'])+'/'+word+'.parquet\')'
+	convert_next_word = False
+	words = query.split(' ')
+	for i, word in enumerate(words):
+		word_stripped = word.strip().strip('\t')
+
+		if convert_next_word:
+			w = "read_parquet('{}.parquet')".format(connection['base_path'] / Path('scenario={}'.format(scenario)) / Path(word_stripped))
+			convert_next_word = False
 		else:
-			w=word
-		sql=sql+w+' '
-	#print(sql)
-	df=duckdb.query(sql).df()
+			w = word_stripped
+
+		if word_stripped in ['FROM', 'JOIN']:
+			# test if join in something like join (select ...)
+			next_word = words[i+1].strip()
+			if not (next_word[:2] == '(s' or next_word[:3] == '( s'):
+				convert_next_word = True
+
+		sql += w + ' '
+
+	df = duckdb.query(sql).df()
 
 	return df
+
 
 def read_mysql(select=None, fromm=None, conditions={}, query=None, connection=None, index_col=None, profile=None, **options):
 	"""
 	Read something from sql. 'select', 'fromm', and 'conditions' can be used for quick and dirty queries, but more 
-	complex ones should be done with 'query' directly by setting 'select' to 'None'
+	complex ones should be done with 'query' directly by setting 'select' to` 'None'
 
 	Parameters
 	==========
