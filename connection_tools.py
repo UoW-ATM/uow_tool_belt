@@ -300,13 +300,13 @@ def read_data(fmt=None, connection=None, profile=None, **kwargs):
 				# Assume the user wants parquet
 				fmt = 'parquet'
 
-	if fmt=='mysql':
+	if fmt == 'mysql':
 		df = read_mysql(connection=connection, profile=profile, **kwargs)
-	elif fmt=='csv':
+	elif fmt == 'csv':
 		df = read_csv(connection=connection, profile=profile, **kwargs)
-	elif fmt=='pickle':
+	elif fmt == 'pickle':
 		df = read_pickle(connection=connection, profile=profile, **kwargs)
-	elif fmt=='parquet':
+	elif fmt == 'parquet':
 		df = read_parquet(connection=connection, profile=profile, **kwargs)
 	else:
 		raise Exception('Unknown format mode:', fmt)
@@ -402,9 +402,8 @@ def read_pickle(file_name='', path='', connection=None, profile=None, byte=True,
 def read_parquet(scenario=None, query=None, connection=None, profile=None, **garbage):
 	"""
 	This function allows to read parquets files like an SQL database, by providing an SQL query. The query is
-	automatically cnverted to a format to be read with duckdb.
+	automatically converted to a format to be read with duckdb.
 	"""
-
 	# TODO: add ssh support and profile input
 	import duckdb
 	#duckdb.load_extension('spatial')s
@@ -416,7 +415,10 @@ def read_parquet(scenario=None, query=None, connection=None, profile=None, **gar
 		word_stripped = word.strip().strip('\t')
 
 		if convert_next_word:
-			w = "read_parquet('{}.parquet')".format(connection['base_path'] / Path('scenario={}'.format(scenario)) / Path(word_stripped))
+			if scenario is not None:
+				w = "read_parquet('{}.parquet')".format(connection['base_path'] / Path('scenario={}'.format(scenario)) / Path(word_stripped))
+			else:
+				w = "read_parquet('{}.parquet')".format(connection['base_path'] / Path(word_stripped))
 			convert_next_word = False
 		else:
 			w = word_stripped
