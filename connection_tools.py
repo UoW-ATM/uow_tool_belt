@@ -426,7 +426,8 @@ def read_parquet(scenario=None, query=None, connection=None, profile=None, **gar
 		if word_stripped in ['FROM', 'JOIN']:
 			# test if join in something like join (select ...)
 			next_word = words[i+1].strip()
-			if not (next_word[:2] == '(s' or next_word[:3] == '( s'):
+			if not (next_word[:2] == '(s' or next_word[:3] == '( s' or
+					next_word[:2] == '(S' or next_word[:3] == '( S'):
 				convert_next_word = True
 
 		sql += w + ' '
