@@ -177,8 +177,8 @@ def intermediate_point(lon1, lat1, lon2, lat2, fraction):
 	y = a * np.cos(lat1) * np.sin(lon1) + b * np.cos(lat2) * np.sin(lon2)
 	z = a * np.sin(lat1) + b * np.sin(lat2)
 
-	lat = np.atan2(z, np.sqrt(x**2+y**2))
-	lon = np.atan2(y, x)
+	lat = np.arctan2(z, np.sqrt(x**2+y**2))
+	lon = np.arctan2(y, x)
 
 	return (lon*180/np.pi, lat*180/np.pi)
 
