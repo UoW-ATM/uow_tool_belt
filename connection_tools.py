@@ -2,6 +2,7 @@ import os
 from os.path import join as jn
 from contextlib import contextmanager
 from pathlib import Path
+import dill
 
 import numpy as np
 import pandas as pd
@@ -368,6 +369,7 @@ def read_pickle(file_name='', path='', connection=None, profile=None, byte=True,
 	"""
 	from pathlib import Path
 	import pickle
+	import dill
 
 	if byte:
 		mode = 'rb'
@@ -388,13 +390,20 @@ def read_pickle(file_name='', path='', connection=None, profile=None, byte=True,
 			# file is on a remote server, read it with sftp
 			# folder creation on remote server.
 			sftp_client = my_file_connection['ssh_connection'].open_sftp()
-			with sftp_client.open(str(full_path)) as remote_file:
-				df = pickle.load(remote_file)
+			try:
+				with sftp_client.open(str(full_path)) as remote_file:
+					df = pickle.load(remote_file)
+			except:
+				with sftp_client.open(str(full_path)) as remote_file:
+					df = dill.load(remote_file)
 		else:
 			# file is local, read it directly.
-
-			with open(full_path, mode) as f:
-				df = pickle.load(f)
+			try:
+				with open(full_path, mode) as f:
+					df = pickle.load(f)
+			except:
+				with open(full_path, mode) as f:
+					df = dill.load(f)
 			
 	return df
 
@@ -600,6 +609,7 @@ def write_pickle(data=None, file_name='',  path='', connection=None, profile=Non
 
 	from pathlib import Path
 	import pickle
+	import dill
 
 	if how!='replace':
 		print ('You chose to save in pickle with mode', how)
@@ -633,8 +643,12 @@ def write_pickle(data=None, file_name='',  path='', connection=None, profile=Non
 					df = pickle.dump(data, remote_file)
 			else:
 				# file is local, write it directly.
-				with open(full_path, mode) as f:
-					pickle.dump(data, f)
+				try:
+					with open(full_path, mode) as f:
+						pickle.dump(data, f)
+				except TypeError:
+					with open(full_path, mode) as f:
+						dill.dump(data, f)
 	else:
 		raise Exception('Not implemented yet')
 
