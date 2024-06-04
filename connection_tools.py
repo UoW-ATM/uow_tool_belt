@@ -258,7 +258,7 @@ def read_data(fmt=None, connection=None, profile=None, **kwargs):
 	Parameters
 	==========
 	fmt: string
-		either 'mysql', 'csv', 'pickle', or 'parquet'
+		either 'mysql', 'csv', 'pickle', 'gtfs.zip' or 'parquet'
 	connection: dictionary
 		
 	kwargs_mysql: dictionary
@@ -309,6 +309,8 @@ def read_data(fmt=None, connection=None, profile=None, **kwargs):
 		df = read_pickle(connection=connection, profile=profile, **kwargs)
 	elif fmt == 'parquet':
 		df = read_parquet(connection=connection, profile=profile, **kwargs)
+	elif fmt == 'gtfs.zip':
+		df = read_gtfs(connection=connection, profile=profile, **kwargs)
 	else:
 		raise Exception('Unknown format mode:', fmt)
 
@@ -335,6 +337,94 @@ def read_csv(file_name='', path='', connection=None, profile=None, **other_paras
 
 	return df
 
+def read_gtfs(filenames=[], path='', connection=None, profile=None, scenario=None, **other_paras):
+	from pathlib import Path
+	from zipfile import ZipFile
+
+	with file_connection(connection=connection, profile=profile) as my_file_connection:
+		ppath = Path(path)
+		if ppath.anchor!='/' and not my_file_connection['base_path'] is None:
+			ppath = Path(my_file_connection['base_path']) / Path('scenario={}'.format(scenario)) / path
+
+		full_path = ppath
+
+	gtfs_data = {'agency':pd.DataFrame(),'calendar_dates':pd.DataFrame(),'calendar':pd.DataFrame(),'routes':pd.DataFrame(),'stop_times':pd.DataFrame(),'stops':pd.DataFrame(),'trips':pd.DataFrame()}
+
+	for gtfs_name in filenames:
+		filename = full_path / gtfs_name
+		with ZipFile(filename) as myzip:
+			routes = pd.read_csv(myzip.open("routes.txt"), dtype={
+					'route_id': 'str',
+					'agency_id': 'str',
+					'route_short_name': 'str',
+					'route_long_name': 'str',
+					'route_desc': 'str',
+					'route_type': 'Int64',
+					'route_color': 'str',
+					'route_text_color': 'str',
+					'exact_times': 'bool'
+				})
+			routes['gtfs'] = gtfs_name
+			gtfs_data['routes'] = pd.concat([gtfs_data['routes'],routes])
+
+			trips = pd.read_csv(myzip.open("trips.txt"), dtype={
+				'route_id': 'str',
+				'service_id': 'str',
+				'trip_id': 'str',
+				'shape_id': 'str',
+				'trip_headsign': 'str',
+				'direction_id': 'str',
+				'block_id': 'str',
+				'wheelchair_accessible': 'str',
+				'route_direction': 'str',
+				'trip_note': 'str',
+				'bikes_allowed': 'str'
+			})
+			trips['gtfs'] = gtfs_name
+			gtfs_data['trips'] = pd.concat([gtfs_data['trips'],trips])
+
+			calendar = pd.read_csv(myzip.open("calendar.txt"), dtype={
+				'service_id': 'str',
+				'monday': 'bool',
+				'tuesday': 'bool',
+				'wednesday': 'bool',
+				'thursday': 'bool',
+				'friday': 'bool',
+				'saturday': 'bool',
+				'sunday': 'bool',
+				'start_date': 'str',
+				'end_date': 'str',
+			})
+			calendar['gtfs'] = gtfs_name
+			gtfs_data['calendar'] = pd.concat([gtfs_data['calendar'],calendar])
+
+			calendar_dates = pd.read_csv(myzip.open("calendar_dates.txt"), dtype={
+				'service_id': 'str',
+				'date': 'str',
+				'exception_type': 'Int64',
+			})
+			calendar_dates['gtfs'] = gtfs_name
+			gtfs_data['calendar_dates'] = pd.concat([gtfs_data['calendar_dates'],calendar_dates])
+
+			stop_times = pd.read_csv(myzip.open("stop_times.txt"), dtype={
+				'trip_id': 'str',
+				'arrival_time': 'str',
+				'departure_time': 'str',
+				'stop_id': 'float64',
+				'stop_sequence': 'Int64',
+				'pickup_type': 'Int64',
+				'drop_off_type': 'Int64',
+			})
+			stop_times['gtfs'] = gtfs_name
+			gtfs_data['stop_times'] = pd.concat([gtfs_data['stop_times'],stop_times])
+
+			stops = pd.read_csv(myzip.open("stops.txt"))
+			stops['gtfs'] = gtfs_name
+			gtfs_data['stops'] = pd.concat([gtfs_data['stops'],stops])
+			agency = pd.read_csv(myzip.open("agency.txt"))
+			agency['gtfs'] = gtfs_name
+			gtfs_data['agency'] = pd.concat([gtfs_data['agency'],agency])
+	return gtfs_data
 
 def do_query(sql, con):
 	# This section is required, otherwise the execute part below fails...
