@@ -8,6 +8,8 @@ bloated requirements files in codes using this library. The only exceptions are:
 import sys
 import contextlib
 import os
+import shutil
+from pathlib import Path
 import string
 from collections import OrderedDict
 from itertools import repeat
@@ -1885,3 +1887,27 @@ def gini(x, w=None):
 		cumx = np.cumsum(sorted_x, dtype=float)
 		# The above formula, with all weights equal to 1 simplifies to:
 		return (n + 1 - 2 * np.sum(cumx) / cumx[-1]) / n
+
+
+def recreate_output_folder(folder_path: Path, delete_previous=True, logger=None):
+	"""
+	Check if a folder exists, delete it if it does, and recreate it as an empty folder.
+
+	Args:
+		folder_path (Path): The path to the folder.
+	"""
+
+	if folder_path.exists():
+		if delete_previous:
+			if logger is not None:
+				logger.important_info(f"Folder {folder_path} exists. Deleting and recreating...")
+			shutil.rmtree(folder_path)
+			folder_path.mkdir(parents=True, exist_ok=True)
+	else:
+		if logger is not None:
+			logger.info(f"Creating folder {folder_path}...")
+		folder_path.mkdir(parents=True, exist_ok=True)
+
+	if logger is not None:
+		logger.important_info(f"Folder {folder_path} is ready.")
+
